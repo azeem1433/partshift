@@ -529,6 +529,47 @@ export default function App() {
     setReviewDraft({ rating: 5, text: "" });
   };
 
+  const deleteListing = async (item) => {
+    if (!requireAuth()) return;
+    if (item.sellerId !== user.id) {
+      alert("You can only delete your own listings.");
+      return;
+    }
+    const label =
+      item.type === "auction"
+        ? `the auction "${item.title}"`
+        : item.type === "car"
+        ? `your ${item.year} ${item.make} ${item.model}`
+        : `"${item.title}"`;
+    if (!window.confirm(`Are you sure you want to delete ${label}? This cannot be undone.`)) return;
+
+    try {
+      const table = item.type === "auction" ? "auctions" : "listings";
+      const { error } = await supabase.from(table).delete().eq("id", item.id);
+      if (error) {
+        alert("Could not delete: " + error.message);
+        return;
+      }
+      // Remove from local state
+      if (item.type === "auction") {
+        setAuctions(prev => prev.filter(a => a.id !== item.id));
+      } else if (item.type === "car") {
+        setCars(prev => prev.filter(c => c.id !== item.id));
+      } else {
+        setParts(prev => prev.filter(p => p.id !== item.id));
+      }
+      setSaved(prev => prev.filter(s => s !== item.id));
+      // If currently viewing this item, go back
+      if (selected && selected.id === item.id) {
+        setSelected(null);
+        setView(item.type === "car" ? "cars" : item.type === "auction" ? "auctions" : "browse");
+      }
+    } catch (err) {
+      console.error("[delete] failed", err);
+      alert("Delete failed. Check console for details.");
+    }
+  };
+
   const handleSellSubmit = async () => {
     if (!requireAuth()) return;
 
@@ -582,6 +623,24 @@ export default function App() {
         return;
       }
 
+      // VIN is required for auction cars, and recommended for fixed-price cars
+      const vin = (carForm.vin || "").trim();
+      if (carForm.listAsAuction) {
+        if (!vin) {
+          alert("VIN is required when auctioning a vehicle. Please enter the 17-character VIN.");
+          return;
+        }
+        if (vin.length !== 17) {
+          alert(`VIN must be exactly 17 characters. You entered ${vin.length}.`);
+          return;
+        }
+        // VIN cannot contain I, O, or Q (per the standard)
+        if (/[IOQ]/i.test(vin)) {
+          alert("VIN cannot contain the letters I, O, or Q. Please double-check.");
+          return;
+        }
+      }
+
       const carTitle = `${carForm.year} ${carForm.make} ${carForm.model}`.trim();
 
       if (carForm.listAsAuction) {
@@ -595,6 +654,7 @@ export default function App() {
           mileage: +carForm.mileage || 0,
           category: "Auction Car",
           description: carForm.description,
+          vin: vin.toUpperCase(),
           start_bid: +carForm.startBid || 1,
           current_bid: +carForm.startBid || 1,
           reserve: +carForm.reserve || 0,
@@ -826,7 +886,8 @@ export default function App() {
             onMessage={() => startConversation(selected.sellerId, selected.id)}
             onOffer={() => { if (requireAuth()) setShowOfferModal(true); }}
             onBid={() => { if (requireAuth()) { setBidDraft(""); setShowBidModal(true); } }}
-            onProfile={() => { setProfileUserId(selected.sellerId); setView("profile"); }} user={user} />
+            onProfile={() => { setProfileUserId(selected.sellerId); setView("profile"); }}
+            onDelete={() => deleteListing(selected)} user={user} />
         )}
 
         {/* VIDEOS */}
@@ -1013,15 +1074,28 @@ export default function App() {
                 <h3 style={styles.profileSection}>Listings ({userListings.length})</h3>
                 {userListings.length === 0 ? <p style={{ color: C.muted }}>No active listings.</p> : (
                   <div style={styles.savedGrid}>
-                    {userListings.map(l => l.type === "car" ? (
-                      <CarCard key={l.id} car={l} seller={u} saved={saved.includes(l.id)}
-                        onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
-                    ) : l.type === "auction" ? (
-                      <AuctionCard key={l.id} auction={l} seller={u} saved={saved.includes(l.id)}
-                        onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
-                    ) : (
-                      <PartCard key={l.id} item={l} seller={u} saved={saved.includes(l.id)}
-                        onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
+                    {userListings.map(l => (
+                      <div key={l.id} style={styles.profileListingWrap}>
+                        {l.type === "car" ? (
+                          <CarCard car={l} seller={u} saved={saved.includes(l.id)}
+                            onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
+                        ) : l.type === "auction" ? (
+                          <AuctionCard auction={l} seller={u} saved={saved.includes(l.id)}
+                            onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
+                        ) : (
+                          <PartCard item={l} seller={u} saved={saved.includes(l.id)}
+                            onClick={() => { setSelected(l); setView("detail"); }} onSave={(e) => { e.stopPropagation(); toggleSave(l.id); }} />
+                        )}
+                        {isMe && (
+                          <button
+                            style={styles.profileDeleteBtn}
+                            onClick={(e) => { e.stopPropagation(); deleteListing(l); }}
+                            title="Delete this listing"
+                          >
+                            🗑 Delete
+                          </button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -1332,7 +1406,7 @@ function AuctionCard({ auction, seller, saved, onClick, onSave }) {
   );
 }
 
-function DetailView({ item, seller, reviews, saved, onBack, onSave, onMessage, onOffer, onBid, onProfile, user }) {
+function DetailView({ item, seller, reviews, saved, onBack, onSave, onMessage, onOffer, onBid, onProfile, onDelete, user }) {
   const isCar = item.type === "car";
   const isAuction = item.type === "auction";
   const isMine = user && item.sellerId === user.id;
@@ -1420,7 +1494,10 @@ function DetailView({ item, seller, reviews, saved, onBack, onSave, onMessage, o
               <button style={styles.msgBtn} onClick={onSave}>{saved ? "❤️ Saved" : "🤍 Save"}</button>
             </div>
           ) : isMine ? (
-            <div style={styles.detailActions}><span style={{ padding: "12px 0", color: C.muted }}>This is your listing.</span></div>
+            <div style={styles.detailActions}>
+              <span style={styles.yourListingBadge}>✓ Your listing</span>
+              <button style={styles.deleteBtn} onClick={onDelete}>🗑 Delete Listing</button>
+            </div>
           ) : (
             <div style={styles.detailActions}><span style={{ padding: "12px 0", color: C.muted }}>This auction has ended.</span></div>
           )}
@@ -1565,7 +1642,30 @@ function CarSellForm({ form, setForm, onSubmit }) {
       </div>
       <div style={styles.formRow}>
         <div style={styles.formGroup}><label style={styles.formLabel}>Color</label><input style={styles.formInput} placeholder="Cement Gray" value={form.color} onChange={e => update("color", e.target.value)} /></div>
-        <div style={styles.formGroup}><label style={styles.formLabel}>VIN</label><input style={styles.formInput} placeholder="17-char VIN" value={form.vin} onChange={e => update("vin", e.target.value)} /></div>
+        <div style={styles.formGroup}>
+          <label style={styles.formLabel}>
+            VIN {form.listAsAuction && <span style={{ color: C.red }}>* required for auctions</span>}
+          </label>
+          <input
+            style={{
+              ...styles.formInput,
+              borderColor: form.listAsAuction && form.vin && form.vin.trim().length > 0 && form.vin.trim().length !== 17 ? C.red : C.border,
+              textTransform: "uppercase",
+            }}
+            placeholder="17-character VIN (no I, O, or Q)"
+            value={form.vin}
+            onChange={e => update("vin", e.target.value.toUpperCase())}
+            maxLength="17"
+            required={form.listAsAuction}
+          />
+          {form.listAsAuction && (
+            <span style={{ fontSize: 11, color: form.vin && form.vin.trim().length === 17 ? C.green : C.muted, marginTop: 4 }}>
+              {form.vin && form.vin.trim().length === 17
+                ? "✓ VIN length looks valid"
+                : `Auction listings must include a verified 17-character VIN (${(form.vin || "").length}/17)`}
+            </span>
+          )}
+        </div>
       </div>
       <div style={styles.formRow}>
         <div style={styles.formGroup}><label style={styles.formLabel}>City</label><input style={styles.formInput} placeholder="Denver" value={form.city} onChange={e => update("city", e.target.value)} /></div>
@@ -1845,6 +1945,10 @@ const styles = {
   detailActions: { marginTop: 28, display: "flex", gap: 12, flexWrap: "wrap" },
   buyBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 10, padding: "14px 28px", fontWeight: 800, cursor: "pointer", fontSize: 15, fontFamily: "inherit", letterSpacing: 1 },
   msgBtn: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: "14px 22px", cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
+  deleteBtn: { background: "#fff", color: C.red, border: `1.5px solid ${C.red}`, borderRadius: 10, padding: "14px 22px", cursor: "pointer", fontSize: 14, fontFamily: "inherit", fontWeight: 700, transition: "background .15s" },
+  yourListingBadge: { background: "#f0fdf4", color: C.green, border: `1px solid ${C.green}`, borderRadius: 10, padding: "12px 18px", fontSize: 13, fontWeight: 700, letterSpacing: 0.5 },
+  profileListingWrap: { position: "relative" },
+  profileDeleteBtn: { position: "absolute", bottom: 12, right: 12, background: "rgba(255,255,255,0.95)", color: C.red, border: `1px solid ${C.red}`, borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit", boxShadow: "0 2px 6px rgba(0,0,0,0.1)", zIndex: 5 },
   authWrap: { padding: "60px 0 80px", display: "flex", justifyContent: "center" },
   authCard: { width: "100%", maxWidth: 440, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 36, display: "flex", flexDirection: "column", gap: 16 },
   authTabs: { display: "flex", gap: 8, background: C.surface, padding: 6, borderRadius: 10 },
