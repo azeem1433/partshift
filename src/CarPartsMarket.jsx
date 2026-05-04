@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { api, supabase } from "./lib/supabase";
 
 /* ============== REGIONS ============== */
 const REGIONS = {
@@ -104,6 +105,73 @@ const formatTime = (s) => {
   return `${m}m ${sec}s`;
 };
 
+
+const fallbackImage = (item) => {
+  if (!item) return "📦";
+  return item.image_url || item.image || (Array.isArray(item.images) && item.images.length ? item.images[0] : "📦");
+};
+
+const normalizeProfile = (profile) => {
+  if (!profile) return null;
+  return {
+    ...profile,
+    id: profile.id,
+    name: profile.name || "Seller",
+    avatar: profile.avatar || "👤",
+    rating: Number(profile.rating || 0),
+    totalSales: profile.total_sales ?? profile.totalSales ?? 0,
+    joined: profile.joined ? String(new Date(profile.joined).getFullYear()) : "2026",
+    city: profile.city || "—",
+    state: profile.state || "—",
+    zip: profile.zip || "",
+  };
+};
+
+const normalizeListing = (row) => {
+  if (!row) return row;
+  const seller = normalizeProfile(row.seller);
+  return {
+    ...row,
+    id: row.id,
+    type: row.type,
+    title: row.title || `${row.year || ""} ${row.make || ""} ${row.model || ""}`.trim(),
+    desc: row.description || row.desc || "",
+    description: row.description || row.desc || "",
+    price: Number(row.price || 0),
+    image: fallbackImage(row),
+    sellerId: row.seller_id || row.sellerId,
+    seller,
+    tag: row.tag || "",
+    condition: row.condition || "Used – Good",
+    category: row.category || (row.type === "car" ? "Cars" : "Parts"),
+    mileage: Number(row.mileage || 0),
+    year: row.year ? Number(row.year) : row.year,
+  };
+};
+
+const normalizeAuction = (row) => {
+  if (!row) return row;
+  const seller = normalizeProfile(row.seller);
+  const endsAt = row.ends_at ? new Date(row.ends_at).getTime() : Date.now();
+  return {
+    ...row,
+    type: "auction",
+    itemType: row.item_type || row.itemType,
+    desc: row.description || row.desc || "",
+    description: row.description || row.desc || "",
+    image: fallbackImage(row),
+    sellerId: row.seller_id || row.sellerId,
+    seller,
+    startBid: Number(row.start_bid ?? row.startBid ?? 0),
+    currentBid: Number(row.current_bid ?? row.currentBid ?? 0),
+    bidCount: Number(row.bid_count ?? row.bidCount ?? 0),
+    endsInSec: Math.max(0, Math.floor((endsAt - Date.now()) / 1000)),
+    reserve: Number(row.reserve || 0),
+    mileage: Number(row.mileage || 0),
+    year: row.year ? Number(row.year) : row.year,
+  };
+};
+
 /* ============== APP ============== */
 export default function App() {
   const [view, setView] = useState("browse");
@@ -111,12 +179,77 @@ export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "" });
 
-  const [parts, setParts] = useState(initialParts);
-  const [cars, setCars] = useState(initialCars);
-  const [auctions, setAuctions] = useState(initialAuctions);
+  const [parts, setParts] = useState([]);
+  const [cars, setCars] = useState([]);
+  const [auctions, setAuctions] = useState([]);
   const [videos, setVideos] = useState(initialVideos);
   const [users, setUsers] = useState(initialUsers);
   const [reviews, setReviews] = useState(initialReviews);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadData() {
+      setLoading(true);
+
+      const [{ data: partRows, error: partError }, { data: carRows, error: carError }, { data: auctionRows, error: auctionError }] = await Promise.all([
+        api.fetchListings({ type: "part" }),
+        api.fetchListings({ type: "car" }),
+        api.fetchAuctions(),
+      ]);
+
+      if (!mounted) return;
+
+      if (partError) console.error("Parts error:", partError);
+      if (carError) console.error("Cars error:", carError);
+      if (auctionError) console.error("Auctions error:", auctionError);
+
+      const nextParts = (partRows || []).map(normalizeListing);
+      const nextCars = (carRows || []).map(normalizeListing);
+      const nextAuctions = (auctionRows || []).map(normalizeAuction);
+
+      setParts(nextParts.length ? nextParts : initialParts);
+      setCars(nextCars.length ? nextCars : initialCars);
+      setAuctions(nextAuctions.length ? nextAuctions : initialAuctions);
+
+      const profileMap = {};
+      [...nextParts, ...nextCars, ...nextAuctions].forEach((item) => {
+        if (item.seller?.id) profileMap[item.seller.id] = item.seller;
+      });
+      if (Object.keys(profileMap).length) setUsers((prev) => ({ ...prev, ...profileMap }));
+
+      setLoading(false);
+    }
+
+    loadData();
+
+    api.getCurrentUser().then((profile) => {
+      if (!mounted || !profile) return;
+      const normalized = normalizeProfile(profile);
+      setUser(normalized);
+      setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      if (!session) {
+        setUser(null);
+        return;
+      }
+      api.getCurrentUser().then((profile) => {
+        if (!mounted || !profile) return;
+        const normalized = normalizeProfile(profile);
+        setUser(normalized);
+        setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
+      });
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   // Video state
   const [videoCat, setVideoCat] = useState("All");
@@ -287,18 +420,43 @@ export default function App() {
   // === ACTIONS ===
   const requireAuth = () => { if (!user) { setView("auth"); return false; } return true; };
 
-  const handleAuth = () => {
+  const handleAuth = async () => {
     if (authMode === "signup") {
-      if (!authForm.name || !authForm.email) return;
-      const newId = "me_" + Date.now();
-      const newUser = { id: newId, name: authForm.name, joined: "2026", avatar: "🧑", rating: 0, totalSales: 0, city: "—", state: "TN", zip: authForm.zip || "37064", bio: "" };
-      setUsers({ ...users, [newId]: newUser });
-      setUser(newUser);
-    } else setUser(users.u1);
+      if (!authForm.name || !authForm.email || !authForm.password) {
+        alert("Enter name, email, and password.");
+        return;
+      }
+
+      const { error } = await api.signUp({
+        email: authForm.email,
+        password: authForm.password,
+        name: authForm.name,
+        zip: authForm.zip,
+      });
+      if (error) return alert(error.message);
+    } else {
+      if (!authForm.email || !authForm.password) {
+        alert("Enter email and password.");
+        return;
+      }
+
+      const { error } = await api.signIn({
+        email: authForm.email,
+        password: authForm.password,
+      });
+      if (error) return alert(error.message);
+    }
+
+    const profile = await api.getCurrentUser();
+    if (profile) {
+      const normalized = normalizeProfile(profile);
+      setUser(normalized);
+      setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
+    }
+
     setAuthForm({ name: "", email: "", password: "", zip: "" });
     setView("browse");
   };
-
   const toggleSave = (id) => {
     if (!requireAuth()) return;
     setSaved(saved.includes(id) ? saved.filter(s => s !== id) : [...saved, id]);
@@ -345,21 +503,24 @@ export default function App() {
     }, 100);
   };
 
-  const submitBid = () => {
+  const submitBid = async () => {
     if (!requireAuth() || !bidDraft || !selected) return;
     const amt = +bidDraft;
     if (amt <= selected.currentBid) {
       alert(`Your bid must be higher than the current bid of $${selected.currentBid.toLocaleString()}`);
       return;
     }
+
+    const { error } = await api.placeBid({ auctionId: selected.id, amount: amt });
+    if (error) return alert(error.message);
+
     setAuctions(prev => prev.map(a => a.id === selected.id
-      ? { ...a, currentBid: amt, bidCount: a.bidCount + 1, lastBidder: user.id }
+      ? { ...a, currentBid: amt, current_bid: amt, bidCount: a.bidCount + 1, bid_count: (a.bidCount || 0) + 1, lastBidder: user.id }
       : a));
-    setSelected({ ...selected, currentBid: amt, bidCount: selected.bidCount + 1, lastBidder: user.id });
+    setSelected({ ...selected, currentBid: amt, current_bid: amt, bidCount: selected.bidCount + 1, bid_count: (selected.bidCount || 0) + 1, lastBidder: user.id });
     setShowBidModal(false);
     setBidDraft("");
   };
-
   const submitReview = (sellerId) => {
     if (!requireAuth() || !reviewDraft.text.trim()) return;
     const newReview = { id: Date.now(), sellerId, buyerName: user.name, rating: reviewDraft.rating, date: "just now", text: reviewDraft.text };
@@ -367,64 +528,117 @@ export default function App() {
     setReviewDraft({ rating: 5, text: "" });
   };
 
-  const handleSellSubmit = () => {
+  const handleSellSubmit = async () => {
     if (!requireAuth()) return;
+
     if (sellMode === "part") {
-      if (!sellForm.title || (!sellForm.price && !sellForm.listAsAuction)) return;
+      if (!sellForm.title || (!sellForm.price && !sellForm.listAsAuction)) {
+        alert("Enter a title and price/start bid.");
+        return;
+      }
+
       if (sellForm.listAsAuction) {
-        const newAuction = {
-          id: Date.now(), type: "auction", itemType: "part", title: sellForm.title, category: sellForm.category,
-          image: "📦", currentBid: +sellForm.startBid || 1, startBid: +sellForm.startBid || 1,
-          reserve: +sellForm.reserve || 0, bidCount: 0, sellerId: user.id,
-          city: sellForm.city || user.city, state: sellForm.state || user.state, zip: sellForm.zip || user.zip,
-          endsInSec: (+sellForm.duration || 3) * 86400, desc: sellForm.description, tag: "NEW",
-        };
-        setAuctions([newAuction, ...auctions]);
+        const endsAt = new Date(Date.now() + (+sellForm.duration || 3) * 86400 * 1000).toISOString();
+        const { data, error } = await api.createAuction({
+          item_type: "part",
+          title: sellForm.title,
+          category: sellForm.category,
+          description: sellForm.description,
+          start_bid: +sellForm.startBid || 1,
+          current_bid: +sellForm.startBid || 1,
+          reserve: +sellForm.reserve || 0,
+          ends_at: endsAt,
+          city: sellForm.city || user.city,
+          state: sellForm.state || user.state,
+          zip: sellForm.zip || user.zip,
+          tag: "NEW",
+        });
+        if (error) return alert(error.message);
+        setAuctions([normalizeAuction(data), ...auctions]);
       } else {
-        const newPart = {
-          id: Date.now(), type: "part", title: sellForm.title, category: sellForm.category, price: +sellForm.price,
-          condition: sellForm.condition, sellerId: user.id, city: sellForm.city || user.city,
-          state: sellForm.state || user.state, zip: sellForm.zip || user.zip, image: "📦",
-          tag: isNew(sellForm.condition) ? "NEW" : "", desc: sellForm.description,
-        };
-        setParts([newPart, ...parts]);
+        const { data, error } = await api.createListing({
+          type: "part",
+          title: sellForm.title,
+          category: sellForm.category,
+          price: +sellForm.price,
+          condition: sellForm.condition,
+          description: sellForm.description,
+          city: sellForm.city || user.city,
+          state: sellForm.state || user.state,
+          zip: sellForm.zip || user.zip,
+          tag: isNew(sellForm.condition) ? "NEW" : "",
+        });
+        if (error) return alert(error.message);
+        setParts([normalizeListing(data), ...parts]);
       }
     } else {
-      if (!carForm.make || !carForm.model || (!carForm.price && !carForm.listAsAuction)) return;
+      if (!carForm.make || !carForm.model || (!carForm.price && !carForm.listAsAuction)) {
+        alert("Enter make, model, and price/start bid.");
+        return;
+      }
+
+      const carTitle = `${carForm.year} ${carForm.make} ${carForm.model}`.trim();
+
       if (carForm.listAsAuction) {
-        const newAuction = {
-          id: Date.now(), type: "auction", itemType: "car", title: `${carForm.year} ${carForm.make} ${carForm.model}`,
-          make: carForm.make, model: carForm.model, year: +carForm.year || 2020, mileage: +carForm.mileage || 0,
-          image: "🚗", category: "Auction Car", currentBid: +carForm.startBid || 1, startBid: +carForm.startBid || 1,
-          reserve: +carForm.reserve || 0, bidCount: 0, sellerId: user.id,
-          city: carForm.city || user.city, state: carForm.state || user.state, zip: carForm.zip || user.zip,
-          endsInSec: (+carForm.duration || 7) * 86400, desc: carForm.description, tag: "NEW",
-        };
-        setAuctions([newAuction, ...auctions]);
+        const endsAt = new Date(Date.now() + (+carForm.duration || 7) * 86400 * 1000).toISOString();
+        const { data, error } = await api.createAuction({
+          item_type: "car",
+          title: carTitle,
+          make: carForm.make,
+          model: carForm.model,
+          year: +carForm.year || null,
+          mileage: +carForm.mileage || 0,
+          category: "Auction Car",
+          description: carForm.description,
+          start_bid: +carForm.startBid || 1,
+          current_bid: +carForm.startBid || 1,
+          reserve: +carForm.reserve || 0,
+          ends_at: endsAt,
+          city: carForm.city || user.city,
+          state: carForm.state || user.state,
+          zip: carForm.zip || user.zip,
+          tag: "NEW",
+        });
+        if (error) return alert(error.message);
+        setAuctions([normalizeAuction(data), ...auctions]);
       } else {
-        const newCar = {
-          id: Date.now(), type: "car", make: carForm.make, model: carForm.model, year: +carForm.year || 2020,
-          trim: carForm.trim, price: +carForm.price, mileage: +carForm.mileage || 0, transmission: carForm.transmission,
-          drivetrain: carForm.drivetrain, fuel: carForm.fuel, color: carForm.color, sellerId: user.id,
-          city: carForm.city || user.city, state: carForm.state || user.state, zip: carForm.zip || user.zip,
-          image: "🚗", tag: "NEW", vin: carForm.vin, desc: carForm.description,
-        };
-        setCars([newCar, ...cars]);
+        const { data, error } = await api.createListing({
+          type: "car",
+          title: carTitle,
+          make: carForm.make,
+          model: carForm.model,
+          year: +carForm.year || null,
+          trim: carForm.trim,
+          price: +carForm.price,
+          mileage: +carForm.mileage || 0,
+          transmission: carForm.transmission,
+          drivetrain: carForm.drivetrain,
+          fuel: carForm.fuel,
+          color: carForm.color,
+          vin: carForm.vin,
+          description: carForm.description,
+          city: carForm.city || user.city,
+          state: carForm.state || user.state,
+          zip: carForm.zip || user.zip,
+          tag: "NEW",
+        });
+        if (error) return alert(error.message);
+        setCars([normalizeListing(data), ...cars]);
       }
     }
+
     setSellSuccess(true);
     setTimeout(() => {
       setSellSuccess(false);
       setSellForm({ title: "", category: "Engine", price: "", condition: "New", description: "", city: "", state: "", zip: "", listAsAuction: false, startBid: "", duration: "3", reserve: "" });
       setCarForm({ make: "", model: "", year: "", trim: "", price: "", mileage: "", transmission: "Automatic", drivetrain: "FWD", fuel: "Gasoline", color: "", description: "", city: "", state: "", vin: "", zip: "", listAsAuction: false, startBid: "", duration: "7", reserve: "" });
       setView("browse");
-    }, 2200);
+    }, 1200);
   };
-
   const allListings = [...parts, ...cars, ...auctions];
   const savedListings = allListings.filter(l => saved.includes(l.id));
   const sellerReviews = (id) => reviews.filter(r => r.sellerId === id);
-  const sellerOf = (l) => users[l.sellerId] || { name: "Unknown", avatar: "?", rating: 0, totalSales: 0 };
+  const sellerOf = (l) => l?.seller || users[l?.sellerId] || { name: "Unknown", avatar: "?", rating: 0, totalSales: 0, city: "—", state: "—" };
 
   const locationCtx = { locMode, setLocMode, filterRegion, setFilterRegion, filterState, setFilterState, zipFilter, setZipFilter, maxDistance, setMaxDistance };
 
@@ -473,7 +687,7 @@ export default function App() {
               <div style={styles.formGroup}><label style={styles.formLabel}>Password</label><input style={styles.formInput} type="password" placeholder="••••••••" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} /></div>
               {authMode === "signup" && <div style={styles.formGroup}><label style={styles.formLabel}>Zip Code</label><input style={styles.formInput} placeholder="37064" value={authForm.zip} onChange={e => setAuthForm({ ...authForm, zip: e.target.value })} /></div>}
               <button style={styles.submitBtn} onClick={handleAuth}>{authMode === "login" ? "Sign In →" : "Create Account →"}</button>
-              <p style={styles.authNote}>Demo mode — any email/password works.</p>
+              <p style={styles.authNote}>Real Supabase login — use your email and password.</p>
             </div>
           </section>
         )}
