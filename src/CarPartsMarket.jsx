@@ -278,6 +278,10 @@ export default function App() {
     styleEl.innerHTML = `
       html, body, #root { margin: 0 !important; padding: 0 !important; width: 100% !important; min-height: 100vh; background: ${C.bg}; }
       * { box-sizing: border-box; }
+      @keyframes typingBounce {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+        30% { transform: translateY(-6px); opacity: 1; }
+      }
     `;
     document.head.appendChild(styleEl);
     return () => { document.head.removeChild(styleEl); };
@@ -328,10 +332,79 @@ export default function App() {
     { from: "bot", text: "Hi! I'm PartShift Assistant 🤖 I can help you find parts, understand auctions, navigate the site, or troubleshoot issues. What do you need?" }
   ]);
   const [chatDraft, setChatDraft] = useState("");
+  // Agent handoff state
+  const [chatMode, setChatMode] = useState("bot"); // "bot" | "connecting" | "agent"
+  const [liveAgent, setLiveAgent] = useState(null); // {name, avatar}
+  const [userMessageCount, setUserMessageCount] = useState(0); // track turns to know when to offer agent
   const chatScrollRef = useRef(null);
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages]);
+
+  // Pool of mock agent identities for the demo. With a real backend (Intercom,
+  // Crisp, Zendesk, your own Supabase channel), you'd pull this from an
+  // "online agents" table and route based on their availability.
+  const AGENT_POOL = [
+    { name: "Marcus T.", avatar: "👨🏽‍🔧", title: "Senior Support Specialist" },
+    { name: "Priya S.", avatar: "👩🏾‍💼", title: "Marketplace Support" },
+    { name: "Jordan R.", avatar: "🧑🏻‍💻", title: "Trust & Safety" },
+  ];
+
+  // Detects if the user clearly needs human help — direct request or signals
+  // of frustration / complex disputes that the bot shouldn't try to resolve.
+  const wantsHumanHelp = (q) => {
+    const t = q.toLowerCase();
+    return (
+      t.includes("agent") ||
+      t.includes("human") ||
+      t.includes("real person") ||
+      t.includes("speak to") ||
+      t.includes("talk to") ||
+      t.includes("representative") ||
+      t.includes("manager") ||
+      t.includes("dispute") ||
+      t.includes("refund") ||
+      t.includes("scam") ||
+      t.includes("fraud") ||
+      t.includes("lawsuit") ||
+      t.includes("complaint") ||
+      t.includes("not working") ||
+      t.includes("doesn't work") ||
+      t.includes("broken") ||
+      t.includes("urgent") ||
+      t.includes("emergency")
+    );
+  };
+
+  const connectToAgent = () => {
+    setChatMode("connecting");
+    setChatMessages(prev => [
+      ...prev,
+      { from: "system", text: "🔄 Connecting you with a live agent..." }
+    ]);
+    // Simulate the connection delay — real backend would await an
+    // agent accept event from your support tool.
+    setTimeout(() => {
+      const agent = AGENT_POOL[Math.floor(Math.random() * AGENT_POOL.length)];
+      setLiveAgent(agent);
+      setChatMode("agent");
+      setChatMessages(prev => [
+        ...prev,
+        { from: "system", text: `✓ ${agent.name} (${agent.title}) joined the chat.` },
+        { from: "agent", text: `Hi${user ? " " + user.name : ""}, I'm ${agent.name.split(" ")[0]}. I just read your conversation — give me a moment to look into this for you.` },
+      ]);
+    }, 2200);
+  };
+
+  const endAgentChat = () => {
+    setChatMessages(prev => [
+      ...prev,
+      { from: "system", text: `${liveAgent?.name || "Agent"} ended the conversation. You're back with the assistant.` },
+    ]);
+    setLiveAgent(null);
+    setChatMode("bot");
+    setUserMessageCount(0);
+  };
 
   const botReply = (q) => {
     const text = q.toLowerCase();
@@ -349,19 +422,83 @@ export default function App() {
     if (text.includes("review") || text.includes("rating")) return "Every seller has a profile page with their rating, total sales, and reviews. Click any seller's name on a listing to view it. After a transaction, you can leave a star rating and a written review.";
     if (text.includes("save") || text.includes("favorite") || text.includes("watchlist")) return "Tap the heart icon on any listing to save it. View all saved items in the ❤️ tab in the top nav.";
     if (text.includes("account") || text.includes("sign") || text.includes("login") || text.includes("register")) return "Click 'Sign In' in the top right. New here? Switch to 'Create Account', enter your email, password, and zip code to get started.";
-    if (text.includes("safe") || text.includes("scam") || text.includes("fraud")) return "Stay safe: only message inside PartShift, never wire money, ask for VIN/maintenance records on cars, request inspection photos, and prefer in-person pickup or escrow for high-value items.";
+    if (text.includes("safe")) return "Stay safe: only message inside PartShift, never wire money, ask for VIN/maintenance records on cars, request inspection photos, and prefer in-person pickup or escrow for high-value items.";
     if (text.includes("hi") || text.includes("hello") || text.includes("hey")) return "Hey! Ask me about auctions, listings, shipping, fees, location filters, or anything else about using PartShift.";
     if (text.includes("thank")) return "Anytime! Anything else I can help you with?";
     return "I can help with: auctions & bidding, buying & selling, repair videos, location filters, messaging sellers, fees, shipping, and account questions. What would you like to know?";
   };
 
+  // Mock live-agent reply. With a real backend (Intercom, Supabase Realtime,
+  // your own websocket), this is replaced with a subscription to the agent's
+  // outgoing messages on a support channel.
+  const agentReply = (q) => {
+    const t = q.toLowerCase();
+    if (t.includes("refund") || t.includes("dispute") || t.includes("scam") || t.includes("fraud")) {
+      return "I'm sorry you're dealing with this. To open a formal dispute I'll need: (1) the listing URL or ID, (2) the seller's username, and (3) screenshots of your conversation. Send those over and I'll escalate to our trust & safety team within the hour.";
+    }
+    if (t.includes("payment") || t.includes("paid") || t.includes("money")) {
+      return "Got it. Can you confirm the payment method used and the date the transaction was completed? Once I have that, I can pull the records on our side and help reconcile.";
+    }
+    if (t.includes("not working") || t.includes("broken") || t.includes("error")) {
+      return "Thanks for the details. Could you share a screenshot of what you're seeing, plus your browser and device? I'll loop in our engineering team if it's a platform issue.";
+    }
+    return "Thanks — let me look into that for you. One moment while I check our records.";
+  };
+
   const sendChat = () => {
     if (!chatDraft.trim()) return;
-    const userMsg = { from: "user", text: chatDraft };
-    const reply = botReply(chatDraft);
+    const text = chatDraft;
+    const userMsg = { from: "user", text };
     setChatMessages(prev => [...prev, userMsg]);
     setChatDraft("");
+
+    // ---- AGENT MODE: live agent is connected, route to them ----
+    if (chatMode === "agent") {
+      setTimeout(() => {
+        setChatMessages(prev => [...prev, { from: "agent", text: agentReply(text) }]);
+      }, 1400);
+      return;
+    }
+
+    // ---- CONNECTING MODE: queue the message until agent arrives ----
+    if (chatMode === "connecting") {
+      // user already requested an agent — just acknowledge
+      setTimeout(() => {
+        setChatMessages(prev => [...prev, { from: "system", text: "Your message has been logged. An agent will be with you shortly." }]);
+      }, 600);
+      return;
+    }
+
+    // ---- BOT MODE ----
+    const nextCount = userMessageCount + 1;
+    setUserMessageCount(nextCount);
+
+    // 1. Explicit request for human → connect immediately
+    if (wantsHumanHelp(text)) {
+      setTimeout(() => {
+        setChatMessages(prev => [...prev, {
+          from: "bot",
+          text: "Sounds like this is something a real person should help you with. Connecting you to the next available agent now."
+        }]);
+        setTimeout(connectToAgent, 800);
+      }, 600);
+      return;
+    }
+
+    // 2. Normal bot reply
+    const reply = botReply(text);
     setTimeout(() => setChatMessages(prev => [...prev, { from: "bot", text: reply }]), 600);
+
+    // 3. After 3 user messages, proactively offer a live agent
+    if (nextCount === 3) {
+      setTimeout(() => {
+        setChatMessages(prev => [...prev, {
+          from: "bot",
+          text: "Still have questions or need someone to look at your specific situation? I can connect you with a live agent.",
+          showAgentButton: true,
+        }]);
+      }, 1400);
+    }
   };
 
   // === HELPERS ===
@@ -1164,6 +1301,147 @@ export default function App() {
             )}
           </section>
         ))}
+
+        {/* PRIVACY POLICY */}
+        {view === "privacy" && (
+          <section style={styles.legalWrap}>
+            <button onClick={() => setView("browse")} style={styles.backBtn}>← Back</button>
+            <h1 style={styles.legalTitle}>Privacy Policy</h1>
+            <p style={styles.legalDate}>Last updated: May 2026</p>
+
+            <h2 style={styles.legalH2}>1. Information we collect</h2>
+            <p style={styles.legalP}>When you create a PartShift account, we collect your email address, name, password (hashed), and zip code so we can show you nearby listings. When you list an item, we collect the listing details and photos you upload. When you message another user or place a bid, we store those interactions to deliver the service.</p>
+
+            <h2 style={styles.legalH2}>2. How we use your information</h2>
+            <p style={styles.legalP}>We use your information to operate the marketplace, match buyers with sellers, process transactions, prevent fraud, and improve the platform. We never sell your personal information to advertisers.</p>
+
+            <h2 style={styles.legalH2}>3. Information sharing</h2>
+            <p style={styles.legalP}>Your public profile (name, avatar, rating, listings, reviews) is visible to all users. Your email, password, and private messages are not. We share data with service providers (Supabase for hosting, Stripe for payments) only as needed to operate the service.</p>
+
+            <h2 style={styles.legalH2}>4. Cookies and tracking</h2>
+            <p style={styles.legalP}>We use cookies to keep you signed in and remember your preferences. We do not use third-party advertising trackers.</p>
+
+            <h2 style={styles.legalH2}>5. Your rights</h2>
+            <p style={styles.legalP}>You can update or delete your account at any time from your profile page. You can request a copy of your data or its full deletion by emailing <a style={styles.legalLink} href="mailto:privacy@partshift.com">privacy@partshift.com</a>.</p>
+
+            <h2 style={styles.legalH2}>6. Data retention</h2>
+            <p style={styles.legalP}>We retain account data while your account is active. Deleted listings and messages are removed within 30 days. Transaction records are kept for 7 years to meet tax and audit requirements.</p>
+
+            <h2 style={styles.legalH2}>7. Children</h2>
+            <p style={styles.legalP}>PartShift is not intended for users under 18. We do not knowingly collect data from minors.</p>
+
+            <h2 style={styles.legalH2}>8. Changes to this policy</h2>
+            <p style={styles.legalP}>If we make material changes to this policy, we will notify users by email or in-app notice at least 30 days in advance.</p>
+
+            <h2 style={styles.legalH2}>9. Contact</h2>
+            <p style={styles.legalP}>Questions? Email <a style={styles.legalLink} href="mailto:privacy@partshift.com">privacy@partshift.com</a>.</p>
+          </section>
+        )}
+
+        {/* TERMS OF SERVICE */}
+        {view === "terms" && (
+          <section style={styles.legalWrap}>
+            <button onClick={() => setView("browse")} style={styles.backBtn}>← Back</button>
+            <h1 style={styles.legalTitle}>Terms of Service</h1>
+            <p style={styles.legalDate}>Last updated: May 2026</p>
+
+            <h2 style={styles.legalH2}>1. Acceptance</h2>
+            <p style={styles.legalP}>By using PartShift, you agree to these Terms. If you do not agree, you may not use the service.</p>
+
+            <h2 style={styles.legalH2}>2. Eligibility</h2>
+            <p style={styles.legalP}>You must be at least 18 years old and legally able to enter contracts in your jurisdiction. By creating an account, you confirm both.</p>
+
+            <h2 style={styles.legalH2}>3. Listings</h2>
+            <p style={styles.legalP}>You are responsible for the accuracy of your listings, including condition, fitment, photos, and price. Misrepresenting an item, listing stolen goods, or selling counterfeit parts will result in removal and account termination. Vehicle auctions require a valid 17-character VIN.</p>
+
+            <h2 style={styles.legalH2}>4. Auctions and bids</h2>
+            <p style={styles.legalP}>A bid is a binding offer. If you are the high bidder when an auction ends and the reserve is met, you have committed to purchase. Sellers may not retract listings during the final hour. Shill bidding (bidding on your own listing) results in immediate ban.</p>
+
+            <h2 style={styles.legalH2}>5. Fees</h2>
+            <p style={styles.legalP}>Listing is free. We charge a 3% transaction fee on parts and tools, a flat $99 fee on car sales, and 5% on auction wins. Fees are due from the seller upon completed transaction.</p>
+
+            <h2 style={styles.legalH2}>6. Payments</h2>
+            <p style={styles.legalP}>Buyers and sellers arrange payment outside the platform unless using PartShift Pay (escrow). PartShift is not a party to the underlying sale and is not responsible for shipping, payment, or condition disputes between users.</p>
+
+            <h2 style={styles.legalH2}>7. Prohibited items</h2>
+            <p style={styles.legalP}>The following may not be listed: stolen parts, counterfeit goods, parts with removed serial numbers, vehicles without clean title (unless explicitly noted as "salvage" or "rebuilt"), tampered odometers, illegal emissions defeat devices, weapons, or anything otherwise restricted by law.</p>
+
+            <h2 style={styles.legalH2}>8. User conduct</h2>
+            <p style={styles.legalP}>Treat others respectfully. Harassment, hate speech, spam, or attempts to circumvent platform fees by directing users off-platform are grounds for account termination.</p>
+
+            <h2 style={styles.legalH2}>9. Disclaimers</h2>
+            <p style={styles.legalP}>PartShift provides the marketplace "as is" without warranties of any kind. We do not guarantee the condition, authenticity, or legality of any listed item. Always inspect parts and vehicles before purchase.</p>
+
+            <h2 style={styles.legalH2}>10. Limitation of liability</h2>
+            <p style={styles.legalP}>To the extent permitted by law, PartShift's total liability to you for any claim is limited to the fees you paid us in the 12 months preceding the claim.</p>
+
+            <h2 style={styles.legalH2}>11. Termination</h2>
+            <p style={styles.legalP}>You may close your account at any time. We may suspend or terminate accounts that violate these Terms.</p>
+
+            <h2 style={styles.legalH2}>12. Governing law</h2>
+            <p style={styles.legalP}>These Terms are governed by the laws of the State of Delaware, USA. Disputes will be resolved by binding arbitration except where prohibited.</p>
+
+            <h2 style={styles.legalH2}>13. Contact</h2>
+            <p style={styles.legalP}>Questions? Email <a style={styles.legalLink} href="mailto:legal@partshift.com">legal@partshift.com</a>.</p>
+          </section>
+        )}
+
+        {/* SUPPORT */}
+        {view === "support" && (
+          <section style={styles.legalWrap}>
+            <button onClick={() => setView("browse")} style={styles.backBtn}>← Back</button>
+            <h1 style={styles.legalTitle}>Support Center</h1>
+            <p style={styles.legalDate}>We're here to help. Most questions are answered below — if not, reach out and a real person will get back to you within one business day.</p>
+
+            <div style={styles.supportCardRow}>
+              <div style={styles.supportCard}>
+                <div style={styles.supportIcon}>💬</div>
+                <h3 style={styles.supportCardTitle}>Live Chat</h3>
+                <p style={styles.supportCardText}>Open the chat icon in the bottom-right corner of any page. Our assistant handles common questions instantly and connects you with a live agent when you need one.</p>
+                <button style={styles.supportCardBtn} onClick={() => setChatOpen(true)}>Open Chat</button>
+              </div>
+              <div style={styles.supportCard}>
+                <div style={styles.supportIcon}>📧</div>
+                <h3 style={styles.supportCardTitle}>Email Support</h3>
+                <p style={styles.supportCardText}>For account, billing, or trust & safety issues, email us directly. Typical response time is under 24 hours.</p>
+                <a href="mailto:support@partshift.com" style={styles.supportCardBtn}>support@partshift.com</a>
+              </div>
+              <div style={styles.supportCard}>
+                <div style={styles.supportIcon}>🚩</div>
+                <h3 style={styles.supportCardTitle}>Report a Listing</h3>
+                <p style={styles.supportCardText}>See something suspicious — counterfeit parts, stolen goods, or a scam? Report it and our trust team will investigate within 4 hours.</p>
+                <a href="mailto:trust@partshift.com" style={styles.supportCardBtn}>trust@partshift.com</a>
+              </div>
+            </div>
+
+            <h2 style={styles.legalH2}>Frequently asked questions</h2>
+
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>How do I get paid after selling?</h3>
+              <p style={styles.legalP}>Buyers and sellers currently arrange payment directly. We recommend Venmo, Zelle, or wire transfer for parts and tools, and a cashier's check or wire for vehicles. PartShift Pay (escrow) is rolling out soon for high-value items.</p>
+            </div>
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>What if my purchase doesn't match the listing?</h3>
+              <p style={styles.legalP}>Message the seller first to resolve directly. If you can't reach a resolution within 7 days, email <a style={styles.legalLink} href="mailto:trust@partshift.com">trust@partshift.com</a> with photos and your conversation history. We mediate disputes between buyers and sellers in good faith.</p>
+            </div>
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>How do auctions and reserves work?</h3>
+              <p style={styles.legalP}>The highest bidder when the timer ends wins. If a reserve was set and the high bid did not meet it, the auction ends with no sale. "No reserve" auctions always sell to the high bidder. You'll see reserve status live on every auction listing.</p>
+            </div>
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>Can I cancel a bid?</h3>
+              <p style={styles.legalP}>Bids are binding and generally cannot be retracted. If you bid by mistake (typo on the amount), email <a style={styles.legalLink} href="mailto:support@partshift.com">support@partshift.com</a> immediately and we'll review.</p>
+            </div>
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>How do I delete my account?</h3>
+              <p style={styles.legalP}>Go to your profile and click "Sign Out". For full deletion of your account and listings, email <a style={styles.legalLink} href="mailto:privacy@partshift.com">privacy@partshift.com</a> from your registered email.</p>
+            </div>
+            <div style={styles.faqItem}>
+              <h3 style={styles.faqQ}>Is PartShift available outside the United States?</h3>
+              <p style={styles.legalP}>Currently we operate in the US only. Canada and UK are on our 2026 roadmap.</p>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* OFFER MODAL */}
@@ -1216,30 +1494,115 @@ export default function App() {
       </div>
       {chatOpen && (
         <div style={styles.chatPanel}>
+          {/* HEADER changes based on mode */}
           <div style={styles.chatHeader}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 22 }}>🤖</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>PartShift Assistant</div>
-                <div style={{ fontSize: 11, color: C.green }}>● Online · usually replies instantly</div>
-              </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
+              {chatMode === "agent" && liveAgent ? (
+                <>
+                  <span style={{ fontSize: 22 }}>{liveAgent.avatar}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{liveAgent.name}</div>
+                    <div style={{ fontSize: 11, color: C.green }}>● {liveAgent.title}</div>
+                  </div>
+                </>
+              ) : chatMode === "connecting" ? (
+                <>
+                  <span style={{ fontSize: 22 }}>⏳</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>Connecting to agent...</div>
+                    <div style={{ fontSize: 11, color: C.accent }}>● Hang tight</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span style={{ fontSize: 22 }}>🤖</span>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>PartShift Assistant</div>
+                    <div style={{ fontSize: 11, color: C.green }}>● Online · usually replies instantly</div>
+                  </div>
+                </>
+              )}
             </div>
+            {chatMode === "agent" && (
+              <button onClick={endAgentChat} style={styles.chatEndBtn} title="End chat with agent">End</button>
+            )}
             <button onClick={() => setChatOpen(false)} style={styles.chatCloseBtn}>✕</button>
           </div>
+
+          {/* MESSAGE LIST */}
           <div style={styles.chatScroll} ref={chatScrollRef}>
-            {chatMessages.map((m, i) => (
-              <div key={i} style={{ ...styles.chatBubble, ...(m.from === "user" ? styles.chatMine : styles.chatBot) }}>{m.text}</div>
-            ))}
+            {chatMessages.map((m, i) => {
+              if (m.from === "system") {
+                return <div key={i} style={styles.chatSystem}>{m.text}</div>;
+              }
+              const bubbleStyle =
+                m.from === "user"
+                  ? { ...styles.chatBubble, ...styles.chatMine }
+                  : m.from === "agent"
+                  ? { ...styles.chatBubble, ...styles.chatAgent }
+                  : { ...styles.chatBubble, ...styles.chatBot };
+              return (
+                <div key={i}>
+                  {m.from !== "user" && (m.from === "agent" || m.from === "bot") && (
+                    <div style={styles.chatSenderLabel}>
+                      {m.from === "agent" ? `${liveAgent?.name?.split(" ")[0] || "Agent"} · live agent` : "Assistant"}
+                    </div>
+                  )}
+                  <div style={bubbleStyle}>{m.text}</div>
+                  {m.showAgentButton && chatMode === "bot" && (
+                    <button style={styles.connectAgentBtn} onClick={connectToAgent}>
+                      🎧 Talk to a live agent
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {chatMode === "connecting" && (
+              <div style={styles.typingIndicator}>
+                <span style={styles.typingDot}></span>
+                <span style={{ ...styles.typingDot, animationDelay: "0.2s" }}></span>
+                <span style={{ ...styles.typingDot, animationDelay: "0.4s" }}></span>
+              </div>
+            )}
           </div>
-          <div style={styles.chatChips}>
-            {["How do auctions work?", "Watch repair videos", "How do I sell?", "Stay safe"].map(s => (
-              <button key={s} onClick={() => { setChatDraft(s); setTimeout(() => sendChat(), 50); }} style={styles.chatChip}>{s}</button>
-            ))}
-          </div>
+
+          {/* QUICK CHIPS — only show when chatting with the bot */}
+          {chatMode === "bot" && (
+            <div style={styles.chatChips}>
+              {["How do auctions work?", "Watch repair videos", "How do I sell?", "Talk to an agent"].map(s => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    if (s === "Talk to an agent") {
+                      connectToAgent();
+                    } else {
+                      setChatDraft(s);
+                      setTimeout(() => sendChat(), 50);
+                    }
+                  }}
+                  style={styles.chatChip}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* INPUT */}
           <div style={styles.chatInputRow}>
-            <input style={styles.chatInput} placeholder="Ask anything..." value={chatDraft}
-              onChange={e => setChatDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && sendChat()} />
-            <button style={styles.chatSendBtn} onClick={sendChat}>→</button>
+            <input
+              style={styles.chatInput}
+              placeholder={
+                chatMode === "agent" ? `Message ${liveAgent?.name?.split(" ")[0] || "agent"}...`
+                : chatMode === "connecting" ? "Waiting for agent..."
+                : "Ask anything..."
+              }
+              value={chatDraft}
+              disabled={chatMode === "connecting"}
+              onChange={e => setChatDraft(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && sendChat()}
+            />
+            <button style={styles.chatSendBtn} onClick={sendChat} disabled={chatMode === "connecting"}>→</button>
           </div>
         </div>
       )}
@@ -1248,7 +1611,13 @@ export default function App() {
         <div style={styles.footerInner}>
           <span style={styles.footerLogo}>⚙ PARTSHIFT</span>
           <span style={styles.footerLinks}>© 2026 · Parts · Cars · Auctions</span>
-          <span style={styles.footerLinks}>Privacy · Terms · Support</span>
+          <div style={styles.footerLinkRow}>
+            <button style={styles.footerLinkBtn} onClick={() => setView("privacy")}>Privacy</button>
+            <span style={styles.footerSep}>·</span>
+            <button style={styles.footerLinkBtn} onClick={() => setView("terms")}>Terms</button>
+            <span style={styles.footerSep}>·</span>
+            <button style={styles.footerLinkBtn} onClick={() => setView("support")}>Support</button>
+          </div>
         </div>
       </footer>
     </div>
@@ -2086,13 +2455,43 @@ const styles = {
   chatBubble: { maxWidth: "85%", padding: "10px 14px", borderRadius: 14, fontSize: 13, lineHeight: 1.5 },
   chatBot: { alignSelf: "flex-start", background: C.surface, color: C.text, border: `1px solid ${C.border}` },
   chatMine: { alignSelf: "flex-end", background: C.accent, color: "#000" },
+  chatAgent: { alignSelf: "flex-start", background: "#eef2ff", color: C.text, border: `1px solid ${C.blue}` },
+  chatSenderLabel: { fontSize: 10, color: C.muted, marginBottom: 2, marginLeft: 4, letterSpacing: 0.5 },
+  chatSystem: { alignSelf: "center", background: "#f3f4f6", color: C.muted, border: `1px solid ${C.border}`, padding: "6px 14px", borderRadius: 12, fontSize: 11, fontStyle: "italic", maxWidth: "90%", textAlign: "center" },
+  chatEndBtn: { background: "transparent", border: `1px solid ${C.red}`, color: C.red, fontSize: 11, padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", marginRight: 4, fontWeight: 700 },
+  connectAgentBtn: { alignSelf: "flex-start", background: C.blue, color: "#fff", border: "none", borderRadius: 18, padding: "8px 16px", marginTop: 6, marginLeft: 0, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 6, boxShadow: "0 2px 6px rgba(37,99,235,0.25)" },
+  typingIndicator: { display: "flex", gap: 4, padding: "8px 12px", alignSelf: "flex-start", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14, width: "fit-content" },
+  typingDot: { width: 8, height: 8, borderRadius: "50%", background: C.muted, display: "inline-block", animation: "typingBounce 1.2s infinite ease-in-out" },
   chatChips: { display: "flex", gap: 6, padding: "0 12px 8px", flexWrap: "wrap" },
   chatChip: { background: "transparent", border: `1px solid ${C.border}`, color: C.muted, padding: "5px 10px", borderRadius: 14, cursor: "pointer", fontSize: 11, fontFamily: "inherit" },
   chatInputRow: { display: "flex", gap: 8, padding: 12, borderTop: `1px solid ${C.border}` },
   chatInput: { flex: 1, background: C.surface, border: `1px solid ${C.border}`, color: C.text, padding: "10px 12px", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" },
   chatSendBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "0 16px", fontWeight: 800, cursor: "pointer", fontSize: 18, fontFamily: "inherit" },
+
+  // Footer links
   footer: { background: C.surface, borderTop: `1px solid ${C.border}`, padding: "24px 0", marginTop: "auto" },
   footerInner: { maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 },
   footerLogo: { fontWeight: 700, letterSpacing: 3, color: C.accent },
   footerLinks: { fontSize: 12, color: C.muted, letterSpacing: 1 },
+  footerLinkRow: { display: "flex", alignItems: "center", gap: 4 },
+  footerLinkBtn: { background: "transparent", border: "none", color: C.muted, fontSize: 12, letterSpacing: 1, cursor: "pointer", padding: "2px 8px", fontFamily: "inherit", textDecoration: "none" },
+  footerSep: { color: C.border, fontSize: 12 },
+
+  // Legal / Support pages
+  legalWrap: { maxWidth: 800, margin: "0 auto", padding: "40px 24px 80px", lineHeight: 1.65 },
+  legalTitle: { fontSize: 36, fontWeight: 800, margin: "16px 0 8px", color: C.text },
+  legalDate: { color: C.muted, fontSize: 13, marginBottom: 28 },
+  legalH2: { fontSize: 18, fontWeight: 700, margin: "32px 0 10px", color: C.text },
+  legalP: { fontSize: 14, color: C.text, marginBottom: 12 },
+  legalLink: { color: C.accent, textDecoration: "underline" },
+
+  // Support page
+  supportCardRow: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 36 },
+  supportCard: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 8 },
+  supportIcon: { fontSize: 28 },
+  supportCardTitle: { fontSize: 17, fontWeight: 700, margin: 0 },
+  supportCardText: { fontSize: 13, color: C.muted, lineHeight: 1.55, margin: "4px 0 12px" },
+  supportCardBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, fontFamily: "inherit", textDecoration: "none", display: "inline-block" },
+  faqItem: { borderTop: `1px solid ${C.border}`, paddingTop: 18, marginBottom: 18 },
+  faqQ: { fontSize: 15, fontWeight: 700, margin: "0 0 6px", color: C.text },
 };
