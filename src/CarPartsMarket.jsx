@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { api, supabase } from "./lib/supabase";
 
 /* ============== REGIONS ============== */
 const REGIONS = {
@@ -105,73 +104,6 @@ const formatTime = (s) => {
   return `${m}m ${sec}s`;
 };
 
-
-const fallbackImage = (item) => {
-  if (!item) return "📦";
-  return item.image_url || item.image || (Array.isArray(item.images) && item.images.length ? item.images[0] : "📦");
-};
-
-const normalizeProfile = (profile) => {
-  if (!profile) return null;
-  return {
-    ...profile,
-    id: profile.id,
-    name: profile.name || "Seller",
-    avatar: profile.avatar || "👤",
-    rating: Number(profile.rating || 0),
-    totalSales: profile.total_sales ?? profile.totalSales ?? 0,
-    joined: profile.joined ? String(new Date(profile.joined).getFullYear()) : "2026",
-    city: profile.city || "—",
-    state: profile.state || "—",
-    zip: profile.zip || "",
-  };
-};
-
-const normalizeListing = (row) => {
-  if (!row) return row;
-  const seller = normalizeProfile(row.seller);
-  return {
-    ...row,
-    id: row.id,
-    type: row.type,
-    title: row.title || `${row.year || ""} ${row.make || ""} ${row.model || ""}`.trim(),
-    desc: row.description || row.desc || "",
-    description: row.description || row.desc || "",
-    price: Number(row.price || 0),
-    image: fallbackImage(row),
-    sellerId: row.seller_id || row.sellerId,
-    seller,
-    tag: row.tag || "",
-    condition: row.condition || "Used – Good",
-    category: row.category || (row.type === "car" ? "Cars" : "Parts"),
-    mileage: Number(row.mileage || 0),
-    year: row.year ? Number(row.year) : row.year,
-  };
-};
-
-const normalizeAuction = (row) => {
-  if (!row) return row;
-  const seller = normalizeProfile(row.seller);
-  const endsAt = row.ends_at ? new Date(row.ends_at).getTime() : Date.now();
-  return {
-    ...row,
-    type: "auction",
-    itemType: row.item_type || row.itemType,
-    desc: row.description || row.desc || "",
-    description: row.description || row.desc || "",
-    image: fallbackImage(row),
-    sellerId: row.seller_id || row.sellerId,
-    seller,
-    startBid: Number(row.start_bid ?? row.startBid ?? 0),
-    currentBid: Number(row.current_bid ?? row.currentBid ?? 0),
-    bidCount: Number(row.bid_count ?? row.bidCount ?? 0),
-    endsInSec: Math.max(0, Math.floor((endsAt - Date.now()) / 1000)),
-    reserve: Number(row.reserve || 0),
-    mileage: Number(row.mileage || 0),
-    year: row.year ? Number(row.year) : row.year,
-  };
-};
-
 /* ============== APP ============== */
 export default function App() {
   const [view, setView] = useState("browse");
@@ -179,77 +111,12 @@ export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "" });
 
-  const [parts, setParts] = useState([]);
-  const [cars, setCars] = useState([]);
-  const [auctions, setAuctions] = useState([]);
+  const [parts, setParts] = useState(initialParts);
+  const [cars, setCars] = useState(initialCars);
+  const [auctions, setAuctions] = useState(initialAuctions);
   const [videos, setVideos] = useState(initialVideos);
   const [users, setUsers] = useState(initialUsers);
   const [reviews, setReviews] = useState(initialReviews);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function loadData() {
-      setLoading(true);
-
-      const [{ data: partRows, error: partError }, { data: carRows, error: carError }, { data: auctionRows, error: auctionError }] = await Promise.all([
-        api.fetchListings({ type: "part" }),
-        api.fetchListings({ type: "car" }),
-        api.fetchAuctions(),
-      ]);
-
-      if (!mounted) return;
-
-      if (partError) console.error("Parts error:", partError);
-      if (carError) console.error("Cars error:", carError);
-      if (auctionError) console.error("Auctions error:", auctionError);
-
-      const nextParts = (partRows || []).map(normalizeListing);
-      const nextCars = (carRows || []).map(normalizeListing);
-      const nextAuctions = (auctionRows || []).map(normalizeAuction);
-
-      setParts(nextParts.length ? nextParts : initialParts);
-      setCars(nextCars.length ? nextCars : initialCars);
-      setAuctions(nextAuctions.length ? nextAuctions : initialAuctions);
-
-      const profileMap = {};
-      [...nextParts, ...nextCars, ...nextAuctions].forEach((item) => {
-        if (item.seller?.id) profileMap[item.seller.id] = item.seller;
-      });
-      if (Object.keys(profileMap).length) setUsers((prev) => ({ ...prev, ...profileMap }));
-
-      setLoading(false);
-    }
-
-    loadData();
-
-    api.getCurrentUser().then((profile) => {
-      if (!mounted || !profile) return;
-      const normalized = normalizeProfile(profile);
-      setUser(normalized);
-      setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!mounted) return;
-      if (!session) {
-        setUser(null);
-        return;
-      }
-      api.getCurrentUser().then((profile) => {
-        if (!mounted || !profile) return;
-        const normalized = normalizeProfile(profile);
-        setUser(normalized);
-        setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
-      });
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
 
   // Video state
   const [videoCat, setVideoCat] = useState("All");
@@ -317,8 +184,8 @@ export default function App() {
 
   // Sell
   const [sellMode, setSellMode] = useState("part");
-  const [sellForm, setSellForm] = useState({ title: "", category: "Engine", price: "", condition: "New", description: "", city: "", state: "", zip: "", listAsAuction: false, startBid: "", duration: "3", reserve: "" });
-  const [carForm, setCarForm] = useState({ make: "", model: "", year: "", trim: "", price: "", mileage: "", transmission: "Automatic", drivetrain: "FWD", fuel: "Gasoline", color: "", description: "", city: "", state: "", vin: "", zip: "", listAsAuction: false, startBid: "", duration: "7", reserve: "" });
+  const [sellForm, setSellForm] = useState({ title: "", category: "Engine", price: "", condition: "New", description: "", city: "", state: "", zip: "", listAsAuction: false, startBid: "", duration: "3", reserve: "", photos: [] });
+  const [carForm, setCarForm] = useState({ make: "", model: "", year: "", trim: "", price: "", mileage: "", transmission: "Automatic", drivetrain: "FWD", fuel: "Gasoline", color: "", description: "", city: "", state: "", vin: "", zip: "", listAsAuction: false, startBid: "", duration: "7", reserve: "", photos: [] });
   const [sellSuccess, setSellSuccess] = useState(false);
 
   // === Help Chatbot ===
@@ -420,43 +287,18 @@ export default function App() {
   // === ACTIONS ===
   const requireAuth = () => { if (!user) { setView("auth"); return false; } return true; };
 
-  const handleAuth = async () => {
+  const handleAuth = () => {
     if (authMode === "signup") {
-      if (!authForm.name || !authForm.email || !authForm.password) {
-        alert("Enter name, email, and password.");
-        return;
-      }
-
-      const { error } = await api.signUp({
-        email: authForm.email,
-        password: authForm.password,
-        name: authForm.name,
-        zip: authForm.zip,
-      });
-      if (error) return alert(error.message);
-    } else {
-      if (!authForm.email || !authForm.password) {
-        alert("Enter email and password.");
-        return;
-      }
-
-      const { error } = await api.signIn({
-        email: authForm.email,
-        password: authForm.password,
-      });
-      if (error) return alert(error.message);
-    }
-
-    const profile = await api.getCurrentUser();
-    if (profile) {
-      const normalized = normalizeProfile(profile);
-      setUser(normalized);
-      setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
-    }
-
+      if (!authForm.name || !authForm.email) return;
+      const newId = "me_" + Date.now();
+      const newUser = { id: newId, name: authForm.name, joined: "2026", avatar: "🧑", rating: 0, totalSales: 0, city: "—", state: "TN", zip: authForm.zip || "37064", bio: "" };
+      setUsers({ ...users, [newId]: newUser });
+      setUser(newUser);
+    } else setUser(users.u1);
     setAuthForm({ name: "", email: "", password: "", zip: "" });
     setView("browse");
   };
+
   const toggleSave = (id) => {
     if (!requireAuth()) return;
     setSaved(saved.includes(id) ? saved.filter(s => s !== id) : [...saved, id]);
@@ -503,24 +345,21 @@ export default function App() {
     }, 100);
   };
 
-  const submitBid = async () => {
+  const submitBid = () => {
     if (!requireAuth() || !bidDraft || !selected) return;
     const amt = +bidDraft;
     if (amt <= selected.currentBid) {
       alert(`Your bid must be higher than the current bid of $${selected.currentBid.toLocaleString()}`);
       return;
     }
-
-    const { error } = await api.placeBid({ auctionId: selected.id, amount: amt });
-    if (error) return alert(error.message);
-
     setAuctions(prev => prev.map(a => a.id === selected.id
-      ? { ...a, currentBid: amt, current_bid: amt, bidCount: a.bidCount + 1, bid_count: (a.bidCount || 0) + 1, lastBidder: user.id }
+      ? { ...a, currentBid: amt, bidCount: a.bidCount + 1, lastBidder: user.id }
       : a));
-    setSelected({ ...selected, currentBid: amt, current_bid: amt, bidCount: selected.bidCount + 1, bid_count: (selected.bidCount || 0) + 1, lastBidder: user.id });
+    setSelected({ ...selected, currentBid: amt, bidCount: selected.bidCount + 1, lastBidder: user.id });
     setShowBidModal(false);
     setBidDraft("");
   };
+
   const submitReview = (sellerId) => {
     if (!requireAuth() || !reviewDraft.text.trim()) return;
     const newReview = { id: Date.now(), sellerId, buyerName: user.name, rating: reviewDraft.rating, date: "just now", text: reviewDraft.text };
@@ -528,117 +367,66 @@ export default function App() {
     setReviewDraft({ rating: 5, text: "" });
   };
 
-  const handleSellSubmit = async () => {
+  const handleSellSubmit = () => {
     if (!requireAuth()) return;
-
+    const partImage = sellForm.photos[0] || "https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80";
+    const carImage = carForm.photos[0] || "https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=800&q=80";
     if (sellMode === "part") {
-      if (!sellForm.title || (!sellForm.price && !sellForm.listAsAuction)) {
-        alert("Enter a title and price/start bid.");
-        return;
-      }
-
+      if (!sellForm.title || (!sellForm.price && !sellForm.listAsAuction)) return;
       if (sellForm.listAsAuction) {
-        const endsAt = new Date(Date.now() + (+sellForm.duration || 3) * 86400 * 1000).toISOString();
-        const { data, error } = await api.createAuction({
-          item_type: "part",
-          title: sellForm.title,
-          category: sellForm.category,
-          description: sellForm.description,
-          start_bid: +sellForm.startBid || 1,
-          current_bid: +sellForm.startBid || 1,
-          reserve: +sellForm.reserve || 0,
-          ends_at: endsAt,
-          city: sellForm.city || user.city,
-          state: sellForm.state || user.state,
-          zip: sellForm.zip || user.zip,
-          tag: "NEW",
-        });
-        if (error) return alert(error.message);
-        setAuctions([normalizeAuction(data), ...auctions]);
+        const newAuction = {
+          id: Date.now(), type: "auction", itemType: "part", title: sellForm.title, category: sellForm.category,
+          image: partImage, photos: sellForm.photos, currentBid: +sellForm.startBid || 1, startBid: +sellForm.startBid || 1,
+          reserve: +sellForm.reserve || 0, bidCount: 0, sellerId: user.id,
+          city: sellForm.city || user.city, state: sellForm.state || user.state, zip: sellForm.zip || user.zip,
+          endsInSec: (+sellForm.duration || 3) * 86400, desc: sellForm.description, tag: "NEW",
+        };
+        setAuctions([newAuction, ...auctions]);
       } else {
-        const { data, error } = await api.createListing({
-          type: "part",
-          title: sellForm.title,
-          category: sellForm.category,
-          price: +sellForm.price,
-          condition: sellForm.condition,
-          description: sellForm.description,
-          city: sellForm.city || user.city,
-          state: sellForm.state || user.state,
-          zip: sellForm.zip || user.zip,
-          tag: isNew(sellForm.condition) ? "NEW" : "",
-        });
-        if (error) return alert(error.message);
-        setParts([normalizeListing(data), ...parts]);
+        const newPart = {
+          id: Date.now(), type: "part", title: sellForm.title, category: sellForm.category, price: +sellForm.price,
+          condition: sellForm.condition, sellerId: user.id, city: sellForm.city || user.city,
+          state: sellForm.state || user.state, zip: sellForm.zip || user.zip, image: partImage, photos: sellForm.photos,
+          tag: isNew(sellForm.condition) ? "NEW" : "", desc: sellForm.description,
+        };
+        setParts([newPart, ...parts]);
       }
     } else {
-      if (!carForm.make || !carForm.model || (!carForm.price && !carForm.listAsAuction)) {
-        alert("Enter make, model, and price/start bid.");
-        return;
-      }
-
-      const carTitle = `${carForm.year} ${carForm.make} ${carForm.model}`.trim();
-
+      if (!carForm.make || !carForm.model || (!carForm.price && !carForm.listAsAuction)) return;
       if (carForm.listAsAuction) {
-        const endsAt = new Date(Date.now() + (+carForm.duration || 7) * 86400 * 1000).toISOString();
-        const { data, error } = await api.createAuction({
-          item_type: "car",
-          title: carTitle,
-          make: carForm.make,
-          model: carForm.model,
-          year: +carForm.year || null,
-          mileage: +carForm.mileage || 0,
-          category: "Auction Car",
-          description: carForm.description,
-          start_bid: +carForm.startBid || 1,
-          current_bid: +carForm.startBid || 1,
-          reserve: +carForm.reserve || 0,
-          ends_at: endsAt,
-          city: carForm.city || user.city,
-          state: carForm.state || user.state,
-          zip: carForm.zip || user.zip,
-          tag: "NEW",
-        });
-        if (error) return alert(error.message);
-        setAuctions([normalizeAuction(data), ...auctions]);
+        const newAuction = {
+          id: Date.now(), type: "auction", itemType: "car", title: `${carForm.year} ${carForm.make} ${carForm.model}`,
+          make: carForm.make, model: carForm.model, year: +carForm.year || 2020, mileage: +carForm.mileage || 0,
+          image: carImage, photos: carForm.photos, category: "Auction Car", currentBid: +carForm.startBid || 1, startBid: +carForm.startBid || 1,
+          reserve: +carForm.reserve || 0, bidCount: 0, sellerId: user.id,
+          city: carForm.city || user.city, state: carForm.state || user.state, zip: carForm.zip || user.zip,
+          endsInSec: (+carForm.duration || 7) * 86400, desc: carForm.description, tag: "NEW",
+        };
+        setAuctions([newAuction, ...auctions]);
       } else {
-        const { data, error } = await api.createListing({
-          type: "car",
-          title: carTitle,
-          make: carForm.make,
-          model: carForm.model,
-          year: +carForm.year || null,
-          trim: carForm.trim,
-          price: +carForm.price,
-          mileage: +carForm.mileage || 0,
-          transmission: carForm.transmission,
-          drivetrain: carForm.drivetrain,
-          fuel: carForm.fuel,
-          color: carForm.color,
-          vin: carForm.vin,
-          description: carForm.description,
-          city: carForm.city || user.city,
-          state: carForm.state || user.state,
-          zip: carForm.zip || user.zip,
-          tag: "NEW",
-        });
-        if (error) return alert(error.message);
-        setCars([normalizeListing(data), ...cars]);
+        const newCar = {
+          id: Date.now(), type: "car", make: carForm.make, model: carForm.model, year: +carForm.year || 2020,
+          trim: carForm.trim, price: +carForm.price, mileage: +carForm.mileage || 0, transmission: carForm.transmission,
+          drivetrain: carForm.drivetrain, fuel: carForm.fuel, color: carForm.color, sellerId: user.id,
+          city: carForm.city || user.city, state: carForm.state || user.state, zip: carForm.zip || user.zip,
+          image: carImage, photos: carForm.photos, tag: "NEW", vin: carForm.vin, desc: carForm.description,
+        };
+        setCars([newCar, ...cars]);
       }
     }
-
     setSellSuccess(true);
     setTimeout(() => {
       setSellSuccess(false);
-      setSellForm({ title: "", category: "Engine", price: "", condition: "New", description: "", city: "", state: "", zip: "", listAsAuction: false, startBid: "", duration: "3", reserve: "" });
-      setCarForm({ make: "", model: "", year: "", trim: "", price: "", mileage: "", transmission: "Automatic", drivetrain: "FWD", fuel: "Gasoline", color: "", description: "", city: "", state: "", vin: "", zip: "", listAsAuction: false, startBid: "", duration: "7", reserve: "" });
+      setSellForm({ title: "", category: "Engine", price: "", condition: "New", description: "", city: "", state: "", zip: "", listAsAuction: false, startBid: "", duration: "3", reserve: "", photos: [] });
+      setCarForm({ make: "", model: "", year: "", trim: "", price: "", mileage: "", transmission: "Automatic", drivetrain: "FWD", fuel: "Gasoline", color: "", description: "", city: "", state: "", vin: "", zip: "", listAsAuction: false, startBid: "", duration: "7", reserve: "", photos: [] });
       setView("browse");
-    }, 1200);
+    }, 2200);
   };
+
   const allListings = [...parts, ...cars, ...auctions];
   const savedListings = allListings.filter(l => saved.includes(l.id));
   const sellerReviews = (id) => reviews.filter(r => r.sellerId === id);
-  const sellerOf = (l) => l?.seller || users[l?.sellerId] || { name: "Unknown", avatar: "?", rating: 0, totalSales: 0, city: "—", state: "—" };
+  const sellerOf = (l) => users[l.sellerId] || { name: "Unknown", avatar: "?", rating: 0, totalSales: 0 };
 
   const locationCtx = { locMode, setLocMode, filterRegion, setFilterRegion, filterState, setFilterState, zipFilter, setZipFilter, maxDistance, setMaxDistance };
 
@@ -687,7 +475,7 @@ export default function App() {
               <div style={styles.formGroup}><label style={styles.formLabel}>Password</label><input style={styles.formInput} type="password" placeholder="••••••••" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} /></div>
               {authMode === "signup" && <div style={styles.formGroup}><label style={styles.formLabel}>Zip Code</label><input style={styles.formInput} placeholder="37064" value={authForm.zip} onChange={e => setAuthForm({ ...authForm, zip: e.target.value })} /></div>}
               <button style={styles.submitBtn} onClick={handleAuth}>{authMode === "login" ? "Sign In →" : "Create Account →"}</button>
-              <p style={styles.authNote}>Real Supabase login — use your email and password.</p>
+              <p style={styles.authNote}>Demo mode — any email/password works.</p>
             </div>
           </section>
         )}
@@ -1439,6 +1227,111 @@ function DetailView({ item, seller, reviews, saved, onBack, onSave, onMessage, o
   );
 }
 
+function PhotoUploader({ photos, setPhotos, max = 10 }) {
+  const inputRef = useRef(null);
+
+  const handleFiles = (fileList) => {
+    if (!fileList) return;
+    const remaining = max - photos.length;
+    if (remaining <= 0) {
+      alert(`You can only upload up to ${max} photos.`);
+      return;
+    }
+    const files = Array.from(fileList).slice(0, remaining);
+    const readers = files.map(file => new Promise((resolve, reject) => {
+      if (!file.type.startsWith("image/")) {
+        return reject(new Error(`${file.name} is not an image`));
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        return reject(new Error(`${file.name} is larger than 10MB`));
+      }
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(file);
+    }));
+    Promise.all(readers)
+      .then(dataUrls => setPhotos([...photos, ...dataUrls]))
+      .catch(err => alert(err.message));
+  };
+
+  const removePhoto = (idx) => {
+    setPhotos(photos.filter((_, i) => i !== idx));
+  };
+
+  const movePhotoToFront = (idx) => {
+    if (idx === 0) return;
+    const newPhotos = [...photos];
+    const [moved] = newPhotos.splice(idx, 1);
+    newPhotos.unshift(moved);
+    setPhotos(newPhotos);
+  };
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => {
+          handleFiles(e.target.files);
+          e.target.value = ""; // reset so the same file can be re-picked after removal
+        }}
+      />
+      <div
+        style={styles.uploadBox}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = C.accent; }}
+        onDragLeave={(e) => { e.currentTarget.style.borderColor = C.border; }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.currentTarget.style.borderColor = C.border;
+          handleFiles(e.dataTransfer.files);
+        }}
+      >
+        <span style={styles.uploadIcon}>📷</span>
+        <span style={styles.uploadText}>
+          {photos.length === 0
+            ? "Click to upload or drag and drop"
+            : `${photos.length} of ${max} photos uploaded — add more`}
+        </span>
+        <span style={styles.uploadHint}>JPG, PNG, WEBP up to 10MB each. First photo is the cover.</span>
+      </div>
+
+      {photos.length > 0 && (
+        <div style={styles.photoGrid}>
+          {photos.map((src, idx) => (
+            <div key={idx} style={styles.photoTile}>
+              <img src={src} alt={`upload ${idx + 1}`} style={styles.photoTileImg} />
+              {idx === 0 && <span style={styles.coverBadge}>COVER</span>}
+              <button
+                type="button"
+                style={styles.photoRemoveBtn}
+                onClick={(e) => { e.stopPropagation(); removePhoto(idx); }}
+                title="Remove"
+              >
+                ✕
+              </button>
+              {idx !== 0 && (
+                <button
+                  type="button"
+                  style={styles.photoSetCoverBtn}
+                  onClick={(e) => { e.stopPropagation(); movePhotoToFront(idx); }}
+                  title="Set as cover"
+                >
+                  Set as cover
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PartSellForm({ form, setForm, onSubmit }) {
   const update = (k, v) => setForm({ ...form, [k]: v });
   return (
@@ -1497,10 +1390,9 @@ function PartSellForm({ form, setForm, onSubmit }) {
         <label style={styles.formLabel}>Description</label>
         <textarea style={{ ...styles.formInput, height: 120, resize: "vertical" }} placeholder="Fitment, history, defects..." value={form.description} onChange={e => update("description", e.target.value)} />
       </div>
-      <div style={styles.uploadBox}>
-        <span style={styles.uploadIcon}>📷</span>
-        <span style={styles.uploadText}>Drag & drop photos or <span style={styles.uploadLink}>browse</span></span>
-        <span style={styles.uploadHint}>Up to 10 photos</span>
+      <div style={styles.formGroup}>
+        <label style={styles.formLabel}>Photos (up to 10)</label>
+        <PhotoUploader photos={form.photos || []} setPhotos={(photos) => update("photos", photos)} max={10} />
       </div>
       <button style={styles.submitBtn} onClick={onSubmit}>{form.listAsAuction ? "Start Auction →" : "Publish Listing →"}</button>
     </div>
@@ -1570,10 +1462,9 @@ function CarSellForm({ form, setForm, onSubmit }) {
         <label style={styles.formLabel}>Description</label>
         <textarea style={{ ...styles.formInput, height: 140, resize: "vertical" }} placeholder="Maintenance, mods, condition..." value={form.description} onChange={e => update("description", e.target.value)} />
       </div>
-      <div style={styles.uploadBox}>
-        <span style={styles.uploadIcon}>📸</span>
-        <span style={styles.uploadText}>Add vehicle photos · <span style={styles.uploadLink}>browse</span></span>
-        <span style={styles.uploadHint}>Up to 20 photos</span>
+      <div style={styles.formGroup}>
+        <label style={styles.formLabel}>Vehicle Photos (up to 20)</label>
+        <PhotoUploader photos={form.photos || []} setPhotos={(photos) => update("photos", photos)} max={20} />
       </div>
       <button style={styles.submitBtn} onClick={onSubmit}>{form.listAsAuction ? "Start Auction →" : "List My Vehicle →"}</button>
     </div>
@@ -1897,11 +1788,17 @@ const styles = {
   formRow: { display: "flex", gap: 16, flexWrap: "wrap" },
   formLabel: { fontSize: 12, letterSpacing: 1.5, color: C.muted, textTransform: "uppercase" },
   formInput: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 14, fontFamily: "inherit", outline: "none", width: "100%", boxSizing: "border-box" },
-  uploadBox: { border: `2px dashed ${C.border}`, borderRadius: 10, padding: "26px 0", textAlign: "center", display: "flex", flexDirection: "column", gap: 8, cursor: "pointer" },
+  uploadBox: { border: `2px dashed ${C.border}`, borderRadius: 10, padding: "32px 16px", textAlign: "center", display: "flex", flexDirection: "column", gap: 6, cursor: "pointer", background: "#fafbfc", transition: "border-color .15s, background .15s" },
   uploadIcon: { fontSize: 30 },
-  uploadText: { color: C.muted, fontSize: 14 },
+  uploadText: { color: C.text, fontSize: 14, fontWeight: 600 },
   uploadLink: { color: C.accent, cursor: "pointer" },
   uploadHint: { fontSize: 12, color: C.muted },
+  photoGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginTop: 12 },
+  photoTile: { position: "relative", aspectRatio: "1/1", borderRadius: 10, overflow: "hidden", border: `1px solid ${C.border}`, background: "#f3f4f6" },
+  photoTileImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  coverBadge: { position: "absolute", top: 6, left: 6, background: C.accent, color: "#fff", padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 800, letterSpacing: 1 },
+  photoRemoveBtn: { position: "absolute", top: 6, right: 6, width: 26, height: 26, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.7)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1 },
+  photoSetCoverBtn: { position: "absolute", bottom: 6, left: 6, right: 6, background: "rgba(255,255,255,0.95)", color: C.text, border: "none", borderRadius: 6, padding: "5px 0", fontSize: 11, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" },
   submitBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 10, padding: "16px 0", fontWeight: 800, cursor: "pointer", fontSize: 16, fontFamily: "inherit", letterSpacing: 1.5 },
   submitBtnSmall: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontSize: 13, fontFamily: "inherit", alignSelf: "flex-start" },
   successBox: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 48, textAlign: "center" },
