@@ -311,6 +311,7 @@ export default function App() {
   const [saved, setSaved] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [activeConvo, setActiveConvo] = useState(null);
+  const [activeMessages, setActiveMessages] = useState([]);
   const [msgDraft, setMsgDraft] = useState("");
   const [offerDraft, setOfferDraft] = useState("");
   const [showOfferModal, setShowOfferModal] = useState(false);
@@ -340,6 +341,76 @@ export default function App() {
   useEffect(() => {
     if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMessages]);
+
+  // ========== MESSAGING — load conversations whenever the user signs in ==========
+  useEffect(() => {
+    if (!user) {
+      setConversations([]);
+      setActiveConvo(null);
+      setActiveMessages([]);
+      return;
+    }
+    let cancelled = false;
+    api.fetchConversations().then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.error("[fetchConversations]", error);
+        return;
+      }
+      if (data) setConversations(data);
+    });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  // ========== MESSAGING — load messages when active convo changes + subscribe to realtime ==========
+  useEffect(() => {
+    if (!activeConvo) {
+      setActiveMessages([]);
+      return;
+    }
+    let cancelled = false;
+
+    // Initial load
+    api.fetchMessages(activeConvo).then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) {
+        console.error("[fetchMessages]", error);
+        return;
+      }
+      if (data) setActiveMessages(data);
+    });
+
+    // Realtime subscription — when anyone (incl. the OTHER user) sends a message
+    // in this conversation, push it into our list immediately. No polling, no refresh.
+    const channel = api.subscribeToConversation(activeConvo, (payload) => {
+      if (cancelled) return;
+      const newMsg = payload.new;
+      if (!newMsg) return;
+      setActiveMessages(prev => {
+        // Avoid duplicates if our own send already inserted it via refetch
+        if (prev.some(m => m.id === newMsg.id)) return prev;
+        return [...prev, newMsg];
+      });
+      // Also refresh conversation list so the preview updates
+      api.fetchConversations().then(({ data }) => {
+        if (!cancelled && data) setConversations(data);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      if (channel && typeof channel.unsubscribe === "function") channel.unsubscribe();
+      else if (channel && typeof supabase?.removeChannel === "function") supabase.removeChannel(channel);
+    };
+  }, [activeConvo]);
+
+  // Auto-scroll the message panel to the bottom when new messages arrive
+  const messagesScrollRef = useRef(null);
+  useEffect(() => {
+    if (messagesScrollRef.current) {
+      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+    }
+  }, [activeMessages]);
 
   // Pool of mock agent identities for the demo. With a real backend (Intercom,
   // Crisp, Zendesk, your own Supabase channel), you'd pull this from an
@@ -600,45 +671,74 @@ export default function App() {
     setSaved(saved.includes(id) ? saved.filter(s => s !== id) : [...saved, id]);
   };
 
-  const startConversation = (sellerId, listingId) => {
+  const startConversation = async (sellerId, listingId, listingType = "listing") => {
     if (!requireAuth()) return;
-    let convo = conversations.find(c => c.otherUserId === sellerId && c.listingId === listingId);
-    if (!convo) {
-      convo = { id: Date.now(), otherUserId: sellerId, listingId, messages: [] };
-      setConversations([...conversations, convo]);
+    if (sellerId === user.id) {
+      alert("You can't message yourself.");
+      return;
     }
-    setActiveConvo(convo.id);
-    setView("messages");
+    try {
+      const { data, error } = await api.startConversation({ sellerId, listingId, listingType });
+      if (error) throw error;
+      // Refresh conversation list
+      const { data: convos } = await api.fetchConversations();
+      if (convos) setConversations(convos);
+      setActiveConvo(data.id);
+      setView("messages");
+    } catch (err) {
+      console.error("[startConversation]", err);
+      alert("Couldn't start conversation: " + (err.message || "unknown error"));
+    }
   };
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!msgDraft.trim() || !activeConvo) return;
-    setConversations(conversations.map(c =>
-      c.id === activeConvo ? { ...c, messages: [...c.messages, { from: user.id, text: msgDraft, time: "now" }] } : c
-    ));
-    setMsgDraft("");
-    setTimeout(() => {
-      setConversations(prev => prev.map(c =>
-        c.id === activeConvo
-          ? { ...c, messages: [...c.messages, { from: c.otherUserId, text: "Thanks for reaching out! Yes, still available.", time: "now" }] }
-          : c
-      ));
-    }, 1500);
+    const text = msgDraft;
+    setMsgDraft(""); // clear immediately so the user knows the send fired
+    try {
+      const { error } = await api.sendMessage({ conversationId: activeConvo, text });
+      if (error) throw error;
+      // Realtime subscription (below) will push the new message into state.
+      // As a fallback for the sender's own UI, refetch immediately:
+      const { data: msgs } = await api.fetchMessages(activeConvo);
+      if (msgs) setActiveMessages(msgs);
+    } catch (err) {
+      console.error("[sendMessage]", err);
+      alert("Couldn't send message: " + (err.message || "unknown error"));
+      setMsgDraft(text); // restore draft so user can retry
+    }
   };
 
-  const submitOffer = () => {
+  const submitOffer = async () => {
     if (!requireAuth() || !offerDraft || !selected) return;
     setShowOfferModal(false);
     const amt = +offerDraft;
     setOfferDraft("");
-    startConversation(selected.sellerId, selected.id);
-    setTimeout(() => {
-      setConversations(prev => prev.map(c =>
-        c.otherUserId === selected.sellerId && c.listingId === selected.id
-          ? { ...c, messages: [...c.messages, { from: user.id, text: `💰 Offer submitted: $${amt.toLocaleString()}`, time: "now", isOffer: true }] }
-          : c
-      ));
-    }, 100);
+    try {
+      // Open or fetch existing conversation
+      const { data: convo, error: convoErr } = await api.startConversation({
+        sellerId: selected.sellerId,
+        listingId: selected.id,
+        listingType: selected.type === "auction" ? "auction" : "listing",
+      });
+      if (convoErr) throw convoErr;
+      // Post the offer as a real message
+      const { error: msgErr } = await api.sendMessage({
+        conversationId: convo.id,
+        text: `💰 Offer submitted: $${amt.toLocaleString()}`,
+        isOffer: true,
+        offerAmount: amt,
+      });
+      if (msgErr) throw msgErr;
+      // Refresh convo list and switch to it
+      const { data: convos } = await api.fetchConversations();
+      if (convos) setConversations(convos);
+      setActiveConvo(convo.id);
+      setView("messages");
+    } catch (err) {
+      console.error("[submitOffer]", err);
+      alert("Couldn't submit offer: " + (err.message || "unknown error"));
+    }
   };
 
   const submitBid = async () => {
@@ -1020,7 +1120,7 @@ export default function App() {
             saved={saved.includes(selected.id)}
             onBack={() => setView(selected.type === "car" ? "cars" : selected.type === "auction" ? "auctions" : "browse")}
             onSave={() => toggleSave(selected.id)}
-            onMessage={() => startConversation(selected.sellerId, selected.id)}
+            onMessage={() => startConversation(selected.sellerId, selected.id, selected.type === "auction" ? "auction" : "listing")}
             onOffer={() => { if (requireAuth()) setShowOfferModal(true); }}
             onBid={() => { if (requireAuth()) { setBidDraft(""); setShowBidModal(true); } }}
             onProfile={() => { setProfileUserId(selected.sellerId); setView("profile"); }}
@@ -1133,17 +1233,24 @@ export default function App() {
               <div style={styles.msgLayout}>
                 <div style={styles.convoList}>
                   {conversations.map(c => {
-                    const other = users[c.otherUserId];
-                    const listing = allListings.find(l => l.id === c.listingId);
-                    const lastMsg = c.messages[c.messages.length - 1];
+                    // The "other person" is whichever party isn't me
+                    const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
+                    const other = (c.buyer_id === user.id ? c.seller : c.buyer) || users[otherId] || { name: "Unknown", avatar: "👤" };
+                    const listing = allListings.find(l => l.id === c.listing_id);
                     return (
                       <div key={c.id} onClick={() => setActiveConvo(c.id)}
                         style={{ ...styles.convoItem, ...(activeConvo === c.id ? styles.convoItemActive : {}) }}>
-                        <div style={styles.convoAvatar}>{other?.avatar}</div>
+                        <div style={styles.convoAvatar}>{other?.avatar || "👤"}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={styles.convoName}>{other?.name}</div>
-                          <div style={styles.convoListing}>re: {listing?.title || `${listing?.year} ${listing?.make} ${listing?.model}`}</div>
-                          <div style={styles.convoLast}>{lastMsg ? lastMsg.text.slice(0, 40) : "No messages yet"}</div>
+                          <div style={styles.convoName}>{other?.name || "Unknown"}</div>
+                          <div style={styles.convoListing}>
+                            {listing ? `re: ${listing.title || `${listing.year} ${listing.make} ${listing.model}`}` : "Conversation"}
+                          </div>
+                          <div style={styles.convoLast}>
+                            {activeConvo === c.id && activeMessages.length > 0
+                              ? activeMessages[activeMessages.length - 1].text.slice(0, 40)
+                              : "Open to view messages"}
+                          </div>
                         </div>
                       </div>
                     );
@@ -1152,22 +1259,32 @@ export default function App() {
                 <div style={styles.msgPanel}>
                   {activeConvo ? (() => {
                     const c = conversations.find(x => x.id === activeConvo);
-                    const other = users[c.otherUserId];
-                    const listing = allListings.find(l => l.id === c.listingId);
+                    if (!c) return <div style={{ padding: 80, textAlign: "center", color: C.muted }}>Loading conversation...</div>;
+                    const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
+                    const other = (c.buyer_id === user.id ? c.seller : c.buyer) || users[otherId] || { name: "Unknown", avatar: "👤", rating: 0 };
+                    const listing = allListings.find(l => l.id === c.listing_id);
                     return (
                       <>
                         <div style={styles.msgHeader}>
-                          <span style={{ fontSize: 24 }}>{other?.avatar}</span>
+                          <span style={{ fontSize: 24 }}>{other?.avatar || "👤"}</span>
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700 }}>{other?.name}</div>
-                            <div style={{ fontSize: 12, color: C.muted }}>★ {other?.rating} · {other?.city}, {other?.state}</div>
+                            <div style={{ fontWeight: 700 }}>{other?.name || "Unknown"}</div>
+                            <div style={{ fontSize: 12, color: C.muted }}>
+                              {other?.rating ? `★ ${other.rating} · ` : ""}{other?.city ? `${other.city}, ${other.state}` : ""}
+                            </div>
                           </div>
-                          <span style={styles.msgListingTag}>{listing?.title || `${listing?.year} ${listing?.make} ${listing?.model}`}</span>
+                          {listing && (
+                            <span style={styles.msgListingTag}>
+                              {listing.title || `${listing.year} ${listing.make} ${listing.model}`}
+                            </span>
+                          )}
                         </div>
-                        <div style={styles.msgScroll}>
-                          {c.messages.length === 0 && <div style={{ textAlign: "center", color: C.muted, padding: 40 }}>Send the first message.</div>}
-                          {c.messages.map((m, i) => (
-                            <div key={i} style={{ ...styles.msgBubble, ...(m.from === user.id ? styles.msgMine : styles.msgTheirs), ...(m.isOffer ? styles.msgOffer : {}) }}>{m.text}</div>
+                        <div style={styles.msgScroll} ref={messagesScrollRef}>
+                          {activeMessages.length === 0 && <div style={{ textAlign: "center", color: C.muted, padding: 40 }}>Send the first message.</div>}
+                          {activeMessages.map((m) => (
+                            <div key={m.id} style={{ ...styles.msgBubble, ...(m.sender_id === user.id ? styles.msgMine : styles.msgTheirs), ...(m.is_offer ? styles.msgOffer : {}) }}>
+                              {m.text}
+                            </div>
                           ))}
                         </div>
                         <div style={styles.msgInputRow}>
