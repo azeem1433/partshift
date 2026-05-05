@@ -1962,10 +1962,243 @@ function PartSellForm({ form, setForm, onSubmit }) {
   );
 }
 
+// =====================================================================
+// VIN VALIDATION & LOOKUP
+// =====================================================================
+// VIN check digit (position 9) — validates that the VIN is mathematically
+// valid before we hit the network. Catches typos for free.
+const VIN_TRANSLITERATION = {
+  A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8,
+  J: 1, K: 2, L: 3, M: 4, N: 5,         P: 7,        R: 9,
+  S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9,
+};
+const VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+
+function isValidVinChecksum(vin) {
+  const v = (vin || "").toUpperCase().trim();
+  if (v.length !== 17) return false;
+  if (/[IOQ]/.test(v)) return false;
+  if (!/^[A-HJ-NPR-Z0-9]+$/.test(v)) return false;
+  let total = 0;
+  for (let i = 0; i < 17; i++) {
+    const ch = v[i];
+    const num = isNaN(+ch) ? VIN_TRANSLITERATION[ch] : +ch;
+    if (num === undefined) return false;
+    total += num * VIN_WEIGHTS[i];
+  }
+  const remainder = total % 11;
+  const expected = remainder === 10 ? "X" : String(remainder);
+  return v[8] === expected;
+}
+
+// Calls NHTSA's free public VIN decoder. No API key required, unlimited use.
+// Returns { make, model, year, trim, body, engine, fuel, drivetrain, transmission, manufacturer, plant }
+async function decodeVin(vin) {
+  const v = (vin || "").toUpperCase().trim();
+  if (v.length !== 17) throw new Error("VIN must be exactly 17 characters.");
+
+  const url = `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValuesExtended/${encodeURIComponent(v)}?format=json`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Lookup service returned ${res.status}`);
+  const data = await res.json();
+  const r = (data?.Results && data.Results[0]) || {};
+
+  if (r.ErrorCode && r.ErrorCode !== "0" && r.ErrorCode !== "" && r.ErrorCode !== "1" && !r.Make) {
+    // ErrorCode 1 means partial match, still useful. Anything else with no Make = bad VIN.
+    throw new Error(r.ErrorText || "Couldn't decode that VIN. Double-check the characters.");
+  }
+
+  // Map NHTSA fields → our form fields
+  const fuel = (r.FuelTypePrimary || "").toLowerCase();
+  let normalizedFuel = "Gasoline";
+  if (fuel.includes("diesel")) normalizedFuel = "Diesel";
+  else if (fuel.includes("electric") && !fuel.includes("hybrid")) normalizedFuel = "Electric";
+  else if (fuel.includes("hybrid") && fuel.includes("plug")) normalizedFuel = "Plug-in Hybrid";
+  else if (fuel.includes("hybrid") || fuel.includes("electric")) normalizedFuel = "Hybrid";
+
+  const drive = (r.DriveType || "").toLowerCase();
+  let normalizedDrive = "FWD";
+  if (drive.includes("4wd") || drive.includes("4x4")) normalizedDrive = "4WD";
+  else if (drive.includes("awd") || drive.includes("all")) normalizedDrive = "AWD";
+  else if (drive.includes("rwd") || drive.includes("rear")) normalizedDrive = "RWD";
+  else if (drive.includes("fwd") || drive.includes("front")) normalizedDrive = "FWD";
+
+  const trans = (r.TransmissionStyle || "").toLowerCase();
+  let normalizedTrans = "Automatic";
+  if (trans.includes("manual")) normalizedTrans = "Manual";
+  else if (trans.includes("dual") || trans.includes("dct") || trans.includes("dsg")) normalizedTrans = "Dual-Clutch";
+  else if (trans.includes("cvt") || trans.includes("continuously")) normalizedTrans = "CVT";
+
+  return {
+    make: r.Make || "",
+    model: r.Model || "",
+    year: r.ModelYear || "",
+    trim: r.Trim || r.Series || "",
+    bodyClass: r.BodyClass || "",
+    engine: r.EngineModel || r.DisplacementL ? `${r.DisplacementL || ""}L ${r.EngineCylinders ? r.EngineCylinders + "-cyl" : ""}`.trim() : "",
+    fuel: normalizedFuel,
+    drivetrain: normalizedDrive,
+    transmission: normalizedTrans,
+    manufacturer: r.Manufacturer || "",
+    plant: [r.PlantCity, r.PlantState, r.PlantCountry].filter(Boolean).join(", "),
+  };
+}
+
 function CarSellForm({ form, setForm, onSubmit }) {
   const update = (k, v) => setForm({ ...form, [k]: v });
+  const updateMany = (patch) => setForm({ ...form, ...patch });
+
+  const [vinLookup, setVinLookup] = useState({ status: "idle", message: "", data: null });
+  // status: idle | invalid | checking | success | error
+
+  const onVinChange = (raw) => {
+    const v = raw.toUpperCase().slice(0, 17);
+    update("vin", v);
+    // Reset status as user types
+    if (vinLookup.status !== "idle") setVinLookup({ status: "idle", message: "", data: null });
+  };
+
+  const handleVinLookup = async () => {
+    const v = (form.vin || "").trim().toUpperCase();
+    if (v.length !== 17) {
+      setVinLookup({ status: "invalid", message: `VIN must be 17 characters (you have ${v.length}).`, data: null });
+      return;
+    }
+    if (/[IOQ]/.test(v)) {
+      setVinLookup({ status: "invalid", message: "VIN cannot contain the letters I, O, or Q.", data: null });
+      return;
+    }
+    if (!isValidVinChecksum(v)) {
+      setVinLookup({ status: "invalid", message: "VIN check digit doesn't match. Double-check for typos.", data: null });
+      return;
+    }
+
+    setVinLookup({ status: "checking", message: "Looking up vehicle...", data: null });
+    try {
+      const decoded = await decodeVin(v);
+      if (!decoded.make || !decoded.model) {
+        setVinLookup({ status: "error", message: "Couldn't find a vehicle for this VIN. You can still fill the form manually.", data: null });
+        return;
+      }
+      // Autofill — only update fields that are currently empty so we don't overwrite user edits
+      const patch = { vin: v };
+      if (!form.make) patch.make = decoded.make;
+      if (!form.model) patch.model = decoded.model;
+      if (!form.year && decoded.year) patch.year = decoded.year;
+      if (!form.trim && decoded.trim) patch.trim = decoded.trim;
+      if (decoded.fuel) patch.fuel = decoded.fuel;
+      if (decoded.drivetrain) patch.drivetrain = decoded.drivetrain;
+      if (decoded.transmission) patch.transmission = decoded.transmission;
+      updateMany(patch);
+      setVinLookup({
+        status: "success",
+        message: `${decoded.year} ${decoded.make} ${decoded.model}${decoded.trim ? " " + decoded.trim : ""}`,
+        data: decoded,
+      });
+    } catch (err) {
+      setVinLookup({ status: "error", message: err.message || "Lookup failed. You can fill the form manually.", data: null });
+    }
+  };
+
+  const vinValid = isValidVinChecksum(form.vin || "");
+  const vinHelperColor =
+    vinLookup.status === "success" ? C.green :
+    vinLookup.status === "checking" ? C.muted :
+    vinLookup.status === "invalid" || vinLookup.status === "error" ? C.red :
+    form.vin && form.vin.length === 17 && vinValid ? C.green :
+    form.vin && form.vin.length > 0 ? C.red : C.muted;
+
   return (
     <div style={styles.sellForm}>
+
+      {/* ============== VIN LOOKUP — top of form ============== */}
+      <div style={styles.vinLookupCard}>
+        <div style={styles.vinHeader}>
+          <span style={styles.vinHeaderIcon}>🔍</span>
+          <div style={{ flex: 1 }}>
+            <div style={styles.vinHeaderTitle}>Quick start: enter your VIN</div>
+            <div style={styles.vinHeaderSub}>We'll look up the make, model, year, trim, and drivetrain automatically.</div>
+          </div>
+        </div>
+        <div style={styles.vinInputRow}>
+          <input
+            style={{
+              ...styles.vinInput,
+              borderColor:
+                vinLookup.status === "success" ? C.green :
+                vinLookup.status === "invalid" || vinLookup.status === "error" ? C.red :
+                C.border,
+              textTransform: "uppercase",
+            }}
+            placeholder="17-character VIN — e.g. 1HGCM82633A123456"
+            value={form.vin || ""}
+            onChange={(e) => onVinChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleVinLookup(); } }}
+            maxLength="17"
+          />
+          <button
+            type="button"
+            style={{
+              ...styles.vinLookupBtn,
+              opacity: vinLookup.status === "checking" ? 0.6 : 1,
+              cursor: vinLookup.status === "checking" ? "wait" : "pointer",
+            }}
+            onClick={handleVinLookup}
+            disabled={vinLookup.status === "checking"}
+          >
+            {vinLookup.status === "checking" ? "Looking up..." : "Look Up VIN"}
+          </button>
+        </div>
+
+        {/* Live feedback row */}
+        <div style={{ ...styles.vinHelper, color: vinHelperColor }}>
+          {vinLookup.status === "success" && (
+            <>✓ Found: <strong>{vinLookup.message}</strong> — fields below have been filled in.</>
+          )}
+          {vinLookup.status === "checking" && <>⏳ {vinLookup.message}</>}
+          {(vinLookup.status === "invalid" || vinLookup.status === "error") && <>⚠ {vinLookup.message}</>}
+          {vinLookup.status === "idle" && form.vin && form.vin.length === 17 && vinValid && (
+            <>✓ VIN is valid. Click "Look Up VIN" to autofill.</>
+          )}
+          {vinLookup.status === "idle" && form.vin && form.vin.length === 17 && !vinValid && (
+            <>⚠ VIN check digit doesn't match — please verify.</>
+          )}
+          {vinLookup.status === "idle" && form.vin && form.vin.length > 0 && form.vin.length < 17 && (
+            <>{form.vin.length}/17 characters</>
+          )}
+          {form.listAsAuction && !form.vin && (
+            <span style={{ color: C.red }}>VIN is required for auction listings.</span>
+          )}
+          {!form.vin && !form.listAsAuction && (
+            <>Optional but recommended — buyers trust listings with verified VINs more.</>
+          )}
+        </div>
+
+        {/* Decoded details panel */}
+        {vinLookup.data && (
+          <div style={styles.vinDecodedPanel}>
+            {[
+              ["Year", vinLookup.data.year],
+              ["Make", vinLookup.data.make],
+              ["Model", vinLookup.data.model],
+              ["Trim", vinLookup.data.trim],
+              ["Body", vinLookup.data.bodyClass],
+              ["Engine", vinLookup.data.engine],
+              ["Drivetrain", vinLookup.data.drivetrain],
+              ["Transmission", vinLookup.data.transmission],
+              ["Fuel", vinLookup.data.fuel],
+              ["Manufactured", vinLookup.data.plant],
+            ].filter(([, v]) => v && String(v).trim()).map(([k, v]) => (
+              <div key={k} style={styles.vinDecodedItem}>
+                <div style={styles.vinDecodedLabel}>{k}</div>
+                <div style={styles.vinDecodedValue}>{v}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ============== REGULAR FORM (autofilled by VIN lookup if used) ============== */}
       <div style={styles.formRow}>
         <div style={styles.formGroup}><label style={styles.formLabel}>Make *</label><input style={styles.formInput} placeholder="Toyota" value={form.make} onChange={e => update("make", e.target.value)} /></div>
         <div style={styles.formGroup}><label style={styles.formLabel}>Model *</label><input style={styles.formInput} placeholder="Tacoma" value={form.model} onChange={e => update("model", e.target.value)} /></div>
@@ -2006,35 +2239,11 @@ function CarSellForm({ form, setForm, onSubmit }) {
           </select></div>
         <div style={styles.formGroup}><label style={styles.formLabel}>Fuel</label>
           <select style={styles.formInput} value={form.fuel} onChange={e => update("fuel", e.target.value)}>
-            {["Gasoline", "Diesel", "Electric", "Hybrid"].map(f => <option key={f}>{f}</option>)}
+            {["Gasoline", "Diesel", "Electric", "Hybrid", "Plug-in Hybrid"].map(f => <option key={f}>{f}</option>)}
           </select></div>
       </div>
       <div style={styles.formRow}>
         <div style={styles.formGroup}><label style={styles.formLabel}>Color</label><input style={styles.formInput} placeholder="Cement Gray" value={form.color} onChange={e => update("color", e.target.value)} /></div>
-        <div style={styles.formGroup}>
-          <label style={styles.formLabel}>
-            VIN {form.listAsAuction && <span style={{ color: C.red }}>* required for auctions</span>}
-          </label>
-          <input
-            style={{
-              ...styles.formInput,
-              borderColor: form.listAsAuction && form.vin && form.vin.trim().length > 0 && form.vin.trim().length !== 17 ? C.red : C.border,
-              textTransform: "uppercase",
-            }}
-            placeholder="17-character VIN (no I, O, or Q)"
-            value={form.vin}
-            onChange={e => update("vin", e.target.value.toUpperCase())}
-            maxLength="17"
-            required={form.listAsAuction}
-          />
-          {form.listAsAuction && (
-            <span style={{ fontSize: 11, color: form.vin && form.vin.trim().length === 17 ? C.green : C.muted, marginTop: 4 }}>
-              {form.vin && form.vin.trim().length === 17
-                ? "✓ VIN length looks valid"
-                : `Auction listings must include a verified 17-character VIN (${(form.vin || "").length}/17)`}
-            </span>
-          )}
-        </div>
       </div>
       <div style={styles.formRow}>
         <div style={styles.formGroup}><label style={styles.formLabel}>City</label><input style={styles.formInput} placeholder="Denver" value={form.city} onChange={e => update("city", e.target.value)} /></div>
@@ -2043,6 +2252,20 @@ function CarSellForm({ form, setForm, onSubmit }) {
             <option value="">—</option>{ALL_STATES.map(s => <option key={s}>{s}</option>)}
           </select></div>
         <div style={styles.formGroup}><label style={styles.formLabel}>Zip</label><input style={styles.formInput} placeholder="80201" value={form.zip} onChange={e => update("zip", e.target.value)} maxLength="5" /></div>
+      </div>
+      <div style={styles.formRow}>
+        <div style={styles.formGroup}><label style={styles.formLabel}>Transmission</label>
+          <select style={styles.formInput} value={form.transmission} onChange={e => update("transmission", e.target.value)}>
+            {["Automatic", "Manual", "CVT", "Dual-Clutch"].map(t => <option key={t}>{t}</option>)}
+          </select></div>
+        <div style={styles.formGroup}><label style={styles.formLabel}>Drivetrain</label>
+          <select style={styles.formInput} value={form.drivetrain} onChange={e => update("drivetrain", e.target.value)}>
+            {["FWD", "RWD", "AWD", "4WD"].map(d => <option key={d}>{d}</option>)}
+          </select></div>
+        <div style={styles.formGroup}><label style={styles.formLabel}>Fuel</label>
+          <select style={styles.formInput} value={form.fuel} onChange={e => update("fuel", e.target.value)}>
+            {["Gasoline", "Diesel", "Electric", "Hybrid"].map(f => <option key={f}>{f}</option>)}
+          </select></div>
       </div>
       <div style={styles.formGroup}>
         <label style={styles.formLabel}>Description</label>
@@ -2375,6 +2598,21 @@ const styles = {
   toggleBtn: { flex: 1, background: "transparent", border: "none", color: C.muted, padding: "12px 0", borderRadius: 8, cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
   toggleBtnActive: { background: C.accent, color: "#000", fontWeight: 700 },
   sellForm: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, padding: 32, display: "flex", flexDirection: "column", gap: 18 },
+
+  // VIN lookup card
+  vinLookupCard: { background: "#f8fafc", border: `1.5px solid ${C.blue}`, borderRadius: 12, padding: 20, display: "flex", flexDirection: "column", gap: 12, marginBottom: 4 },
+  vinHeader: { display: "flex", alignItems: "flex-start", gap: 12 },
+  vinHeaderIcon: { fontSize: 22, lineHeight: 1 },
+  vinHeaderTitle: { fontWeight: 700, fontSize: 15, color: C.text, marginBottom: 2 },
+  vinHeaderSub: { fontSize: 12, color: C.muted, lineHeight: 1.45 },
+  vinInputRow: { display: "flex", gap: 8 },
+  vinInput: { flex: 1, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: "12px 14px", color: C.text, fontSize: 14, fontFamily: "monospace", letterSpacing: 1, outline: "none" },
+  vinLookupBtn: { background: C.blue, color: "#fff", border: "none", borderRadius: 8, padding: "0 22px", fontWeight: 700, fontSize: 13, cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap" },
+  vinHelper: { fontSize: 12, lineHeight: 1.5, minHeight: 16 },
+  vinDecodedPanel: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, padding: 14, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, marginTop: 4 },
+  vinDecodedItem: { display: "flex", flexDirection: "column", gap: 2 },
+  vinDecodedLabel: { fontSize: 10, color: C.muted, letterSpacing: 1, textTransform: "uppercase" },
+  vinDecodedValue: { fontSize: 13, color: C.text, fontWeight: 600 },
   formGroup: { display: "flex", flexDirection: "column", gap: 8, flex: 1 },
   formRow: { display: "flex", gap: 16, flexWrap: "wrap" },
   formLabel: { fontSize: 12, letterSpacing: 1.5, color: C.muted, textTransform: "uppercase" },
