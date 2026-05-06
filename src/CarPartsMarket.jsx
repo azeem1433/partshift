@@ -480,14 +480,18 @@ export default function App() {
   }, [conversations, lastReadMap, user]);
 
   // ========== MESSAGING — load messages when active convo changes + subscribe to realtime ==========
+  // Hold the active channel in a ref so sendTypingBroadcast can reuse it (must be the
+  // same channel instance that's subscribed; creating a new one won't deliver to peers).
+  const activeChannelRef = useRef(null);
+
   useEffect(() => {
     if (!activeConvo) {
       setActiveMessages([]);
+      activeChannelRef.current = null;
       return;
     }
     let cancelled = false;
 
-    // Initial load
     api.fetchMessages(activeConvo).then(({ data, error }) => {
       if (cancelled) return;
       if (error) {
@@ -497,10 +501,14 @@ export default function App() {
       if (data) setActiveMessages(data);
     });
 
-    // One channel for both DB inserts (new messages) AND broadcast events (typing).
-    // Broadcast is in-memory only — no DB writes, so it's free and instant.
-    const channel = supabase
-      .channel(`convo:${activeConvo}`)
+    // One channel for DB inserts (new messages) AND broadcast events (typing).
+    // Note: we attach the broadcast listener BEFORE subscribe(), and we keep the
+    // channel ref so the input handler can call channel.send() on the same instance.
+    const channel = supabase.channel(`convo:${activeConvo}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
       .on("postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeConvo}` },
         (payload) => {
@@ -508,7 +516,7 @@ export default function App() {
           const newMsg = payload.new;
           if (!newMsg) return;
           setActiveMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
-          // Clear typing indicator for the sender
+          // Sender just sent → clear their typing indicator
           setTypingMap(prev => {
             const next = { ...prev };
             delete next[activeConvo];
@@ -521,16 +529,21 @@ export default function App() {
       .on("broadcast", { event: "typing" }, (payload) => {
         if (cancelled) return;
         const { userId, name } = payload.payload || {};
-        if (!userId || userId === user?.id) return; // ignore our own typing
+        if (!userId || userId === user?.id) return;
         setTypingMap(prev => ({
           ...prev,
           [activeConvo]: { name: name || "Someone", until: Date.now() + 4000 },
         }));
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") {
+          activeChannelRef.current = channel;
+        }
+      });
 
     return () => {
       cancelled = true;
+      activeChannelRef.current = null;
       if (channel?.unsubscribe) channel.unsubscribe();
       else if (supabase?.removeChannel) supabase.removeChannel(channel);
     };
@@ -554,18 +567,20 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // Send typing broadcast when the user is typing (debounced to once per ~2s)
+  // Send typing broadcast through the EXISTING subscribed channel.
+  // Debounced to once per ~2s so we don't spam the channel on every keystroke.
   const lastTypingSentRef = useRef(0);
   const sendTypingBroadcast = () => {
     if (!activeConvo || !user) return;
+    const ch = activeChannelRef.current;
+    if (!ch) return; // not subscribed yet — silently skip
     const now = Date.now();
     if (now - lastTypingSentRef.current < 2000) return;
     lastTypingSentRef.current = now;
-    const channel = supabase.channel(`convo:${activeConvo}`);
-    channel.send({
+    ch.send({
       type: "broadcast",
       event: "typing",
-      payload: { userId: user.id, name: user.name },
+      payload: { userId: user.id, name: user.name || "Someone" },
     });
   };
 
@@ -1481,19 +1496,26 @@ export default function App() {
                           {activeMessages.map((m, idx) => {
                             const mine = m.sender_id === user.id;
                             const prev = activeMessages[idx - 1];
-                            // Show timestamp if first message, or 5+ minutes since prev message
                             const prevTime = prev ? new Date(prev.created_at).getTime() : 0;
                             const thisTime = new Date(m.created_at).getTime();
                             const showSeparator = !prev || (thisTime - prevTime) > 5 * 60 * 1000;
                             return (
-                              <div key={m.id}>
+                              <div key={m.id} style={{ display: "flex", flexDirection: "column", width: "100%" }}>
                                 {showSeparator && (
                                   <div style={styles.msgTimeSeparator}>{formatChatTime(m.created_at)}</div>
                                 )}
-                                <div style={{ ...styles.msgBubble, ...(mine ? styles.msgMine : styles.msgTheirs), ...(m.is_offer ? styles.msgOffer : {}) }}>
+                                <div style={{
+                                  ...styles.msgBubble,
+                                  ...(mine ? styles.msgMine : styles.msgTheirs),
+                                  ...(m.is_offer ? styles.msgOffer : {}),
+                                  alignSelf: mine ? "flex-end" : "flex-start",
+                                }}>
                                   {m.text}
                                 </div>
-                                <div style={{ ...styles.msgTimeStamp, textAlign: mine ? "right" : "left" }}>
+                                <div style={{
+                                  ...styles.msgTimeStamp,
+                                  alignSelf: mine ? "flex-end" : "flex-start",
+                                }}>
                                   {formatChatTime(m.created_at)}
                                 </div>
                               </div>
