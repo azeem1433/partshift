@@ -124,7 +124,7 @@ export const api = {
       .from("conversations")
       .select("*, buyer:profiles!buyer_id(*), seller:profiles!seller_id(*)")
       .or(`buyer_id.eq.${user.id},seller_id.eq.${user.id}`)
-      .order("created_at", { ascending: false });
+      .order("last_message_at", { ascending: false, nullsFirst: false });
   },
 
   async fetchMessages(conversationId) {

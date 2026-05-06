@@ -106,6 +106,31 @@ const formatTime = (s) => {
   return `${m}m ${sec}s`;
 };
 
+// Format a message timestamp into a friendly relative+absolute label
+// e.g. "Just now", "5m ago", "Yesterday 3:42 PM", "Mar 12, 2:18 PM"
+const formatChatTime = (iso) => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const now = new Date();
+  const diff = (now - d) / 1000; // seconds
+  if (diff < 5) return "Just now";
+  if (diff < 60) return `${Math.floor(diff)}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  const sameDay = d.toDateString() === now.toDateString();
+  const time12 = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  if (sameDay) return time12;
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return `Yesterday ${time12}`;
+  const sameYear = d.getFullYear() === now.getFullYear();
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  }) + ` ${time12}`;
+};
+
 
 const fallbackImage = (item) => {
   if (!item) return "📦";
@@ -343,6 +368,21 @@ export default function App() {
   }, [chatMessages]);
 
   // ========== MESSAGING — load conversations whenever the user signs in ==========
+  // Track last-read timestamps per conversation in localStorage so unread counts survive refresh
+  const [lastReadMap, setLastReadMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("partshift_lastRead") || "{}"); }
+    catch { return {}; }
+  });
+  const markConvoRead = (convoId) => {
+    const updated = { ...lastReadMap, [convoId]: Date.now() };
+    setLastReadMap(updated);
+    try { localStorage.setItem("partshift_lastRead", JSON.stringify(updated)); }
+    catch { /* private browsing — ignore */ }
+  };
+
+  // Track typing status per conversation: { [convoId]: { name, until } }
+  const [typingMap, setTypingMap] = useState({});
+
   useEffect(() => {
     if (!user) {
       setConversations([]);
@@ -362,6 +402,57 @@ export default function App() {
     return () => { cancelled = true; };
   }, [user]);
 
+  // ========== MESSAGING — GLOBAL subscription to all incoming messages ==========
+  // Fires regardless of which page user is on, so the unread badge in the header
+  // updates when a message arrives while they're browsing parts/cars/etc.
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel(`user-inbox:${user.id}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        (payload) => {
+          const m = payload.new;
+          if (!m || m.sender_id === user.id) return; // only count messages from others
+          // Refresh conversation list to update preview + unread state
+          api.fetchConversations().then(({ data }) => {
+            if (data) setConversations(data);
+          });
+          // If this is the conversation we're currently viewing, mark as read
+          if (m.conversation_id === activeConvo && view === "messages") {
+            markConvoRead(m.conversation_id);
+          }
+        })
+      .subscribe();
+    return () => {
+      if (channel?.unsubscribe) channel.unsubscribe();
+      else if (supabase?.removeChannel) supabase.removeChannel(channel);
+    };
+    // eslint-disable-next-line
+  }, [user, activeConvo, view]);
+
+  // Mark active conversation as read whenever we open it or new messages arrive in it
+  useEffect(() => {
+    if (activeConvo && view === "messages" && activeMessages.length > 0) {
+      markConvoRead(activeConvo);
+    }
+    // eslint-disable-next-line
+  }, [activeConvo, view, activeMessages.length]);
+
+  // Compute unread count: messages from other users newer than my lastReadAt
+  // For the global header badge, we count CONVERSATIONS that have unread, not raw messages
+  const unreadConvoIds = useMemo(() => {
+    if (!user) return [];
+    return conversations.filter(c => {
+      const lastRead = lastReadMap[c.id] || 0;
+      // Use the latest activity timestamp on this convo; fall back to created_at
+      const latest = c.last_message_at ? new Date(c.last_message_at).getTime() : new Date(c.created_at).getTime();
+      // Only count as unread if the latest activity wasn't from us
+      const lastSenderIsUs = c.last_sender_id === user.id;
+      return !lastSenderIsUs && latest > lastRead;
+    }).map(c => c.id);
+  }, [conversations, lastReadMap, user]);
+
   // ========== MESSAGING — load messages when active convo changes + subscribe to realtime ==========
   useEffect(() => {
     if (!activeConvo) {
@@ -380,29 +471,77 @@ export default function App() {
       if (data) setActiveMessages(data);
     });
 
-    // Realtime subscription — when anyone (incl. the OTHER user) sends a message
-    // in this conversation, push it into our list immediately. No polling, no refresh.
-    const channel = api.subscribeToConversation(activeConvo, (payload) => {
-      if (cancelled) return;
-      const newMsg = payload.new;
-      if (!newMsg) return;
-      setActiveMessages(prev => {
-        // Avoid duplicates if our own send already inserted it via refetch
-        if (prev.some(m => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
-      // Also refresh conversation list so the preview updates
-      api.fetchConversations().then(({ data }) => {
-        if (!cancelled && data) setConversations(data);
-      });
-    });
+    // One channel for both DB inserts (new messages) AND broadcast events (typing).
+    // Broadcast is in-memory only — no DB writes, so it's free and instant.
+    const channel = supabase
+      .channel(`convo:${activeConvo}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeConvo}` },
+        (payload) => {
+          if (cancelled) return;
+          const newMsg = payload.new;
+          if (!newMsg) return;
+          setActiveMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
+          // Clear typing indicator for the sender
+          setTypingMap(prev => {
+            const next = { ...prev };
+            delete next[activeConvo];
+            return next;
+          });
+          api.fetchConversations().then(({ data }) => {
+            if (!cancelled && data) setConversations(data);
+          });
+        })
+      .on("broadcast", { event: "typing" }, (payload) => {
+        if (cancelled) return;
+        const { userId, name } = payload.payload || {};
+        if (!userId || userId === user?.id) return; // ignore our own typing
+        setTypingMap(prev => ({
+          ...prev,
+          [activeConvo]: { name: name || "Someone", until: Date.now() + 4000 },
+        }));
+      })
+      .subscribe();
 
     return () => {
       cancelled = true;
-      if (channel && typeof channel.unsubscribe === "function") channel.unsubscribe();
-      else if (channel && typeof supabase?.removeChannel === "function") supabase.removeChannel(channel);
+      if (channel?.unsubscribe) channel.unsubscribe();
+      else if (supabase?.removeChannel) supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line
   }, [activeConvo]);
+
+  // Sweep stale typing indicators every second
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTypingMap(prev => {
+        const now = Date.now();
+        let changed = false;
+        const next = {};
+        Object.entries(prev).forEach(([k, v]) => {
+          if (v.until > now) next[k] = v;
+          else changed = true;
+        });
+        return changed ? next : prev;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Send typing broadcast when the user is typing (debounced to once per ~2s)
+  const lastTypingSentRef = useRef(0);
+  const sendTypingBroadcast = () => {
+    if (!activeConvo || !user) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < 2000) return;
+    lastTypingSentRef.current = now;
+    const channel = supabase.channel(`convo:${activeConvo}`);
+    channel.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { userId: user.id, name: user.name },
+    });
+  };
 
   // Auto-scroll the message panel to the bottom when new messages arrive
   const messagesScrollRef = useRef(null);
@@ -965,7 +1104,7 @@ export default function App() {
             {user && (
               <>
                 <button onClick={() => setView("saved")} style={styles.iconBtn}>❤️ {saved.length > 0 && <span style={styles.dot}>{saved.length}</span>}</button>
-                <button onClick={() => setView("messages")} style={styles.iconBtn}>💬 {conversations.length > 0 && <span style={styles.dot}>{conversations.length}</span>}</button>
+                <button onClick={() => setView("messages")} style={styles.iconBtn}>💬 {unreadConvoIds.length > 0 && <span style={styles.dot}>{unreadConvoIds.length}</span>}</button>
                 <button onClick={() => { setProfileUserId(user.id); setView("profile"); }} style={styles.userPill}>
                   <span style={{ fontSize: 16 }}>{user.avatar}</span><span>{user.name}</span>
                 </button>
@@ -1233,23 +1372,28 @@ export default function App() {
               <div style={styles.msgLayout}>
                 <div style={styles.convoList}>
                   {conversations.map(c => {
-                    // The "other person" is whichever party isn't me
                     const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
                     const other = (c.buyer_id === user.id ? c.seller : c.buyer) || users[otherId] || { name: "Unknown", avatar: "👤" };
                     const listing = allListings.find(l => l.id === c.listing_id);
+                    const listingTitle = listing
+                      ? (listing.title || `${listing.year || ""} ${listing.make || ""} ${listing.model || ""}`.trim() || "Listing")
+                      : "Conversation";
+                    const isUnread = unreadConvoIds.includes(c.id);
+                    const lastMsgPreview = activeConvo === c.id && activeMessages.length > 0
+                      ? activeMessages[activeMessages.length - 1].text
+                      : "";
                     return (
                       <div key={c.id} onClick={() => setActiveConvo(c.id)}
-                        style={{ ...styles.convoItem, ...(activeConvo === c.id ? styles.convoItemActive : {}) }}>
+                        style={{ ...styles.convoItem, ...(activeConvo === c.id ? styles.convoItemActive : {}), ...(isUnread ? styles.convoItemUnread : {}) }}>
                         <div style={styles.convoAvatar}>{other?.avatar || "👤"}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={styles.convoName}>{other?.name || "Unknown"}</div>
-                          <div style={styles.convoListing}>
-                            {listing ? `re: ${listing.title || `${listing.year} ${listing.make} ${listing.model}`}` : "Conversation"}
+                          <div style={styles.convoNameRow}>
+                            <span style={{ ...styles.convoName, fontWeight: isUnread ? 800 : 700 }}>{other?.name || "Unknown"}</span>
+                            {isUnread && <span style={styles.unreadDot}></span>}
                           </div>
-                          <div style={styles.convoLast}>
-                            {activeConvo === c.id && activeMessages.length > 0
-                              ? activeMessages[activeMessages.length - 1].text.slice(0, 40)
-                              : "Open to view messages"}
+                          <div style={styles.convoListing}>{listingTitle.length > 38 ? listingTitle.slice(0, 38) + "…" : listingTitle}</div>
+                          <div style={{ ...styles.convoLast, fontWeight: isUnread ? 600 : 400, color: isUnread ? C.text : C.muted }}>
+                            {lastMsgPreview ? (lastMsgPreview.length > 42 ? lastMsgPreview.slice(0, 42) + "…" : lastMsgPreview) : "Open to view messages"}
                           </div>
                         </div>
                       </div>
@@ -1263,6 +1407,8 @@ export default function App() {
                     const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
                     const other = (c.buyer_id === user.id ? c.seller : c.buyer) || users[otherId] || { name: "Unknown", avatar: "👤", rating: 0 };
                     const listing = allListings.find(l => l.id === c.listing_id);
+                    const typing = typingMap[activeConvo];
+
                     return (
                       <>
                         <div style={styles.msgHeader}>
@@ -1273,23 +1419,82 @@ export default function App() {
                               {other?.rating ? `★ ${other.rating} · ` : ""}{other?.city ? `${other.city}, ${other.state}` : ""}
                             </div>
                           </div>
+                          {/* Listing context card replaces the plain "Test3" badge */}
                           {listing && (
-                            <span style={styles.msgListingTag}>
-                              {listing.title || `${listing.year} ${listing.make} ${listing.model}`}
-                            </span>
+                            <div
+                              style={styles.listingContextCard}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelected(listing);
+                                setView("detail");
+                              }}
+                              title="Open listing"
+                            >
+                              {listing.image_url || listing.image ? (
+                                <img src={listing.image_url || listing.image} alt="" style={styles.listingContextImg} />
+                              ) : (
+                                <div style={styles.listingContextImgPlaceholder}>📦</div>
+                              )}
+                              <div style={{ minWidth: 0, flex: 1 }}>
+                                <div style={styles.listingContextLabel}>About</div>
+                                <div style={styles.listingContextTitle}>
+                                  {(() => {
+                                    const t = listing.title || `${listing.year || ""} ${listing.make || ""} ${listing.model || ""}`.trim();
+                                    return t.length > 30 ? t.slice(0, 30) + "…" : t;
+                                  })()}
+                                </div>
+                                {listing.price && <div style={styles.listingContextPrice}>${Number(listing.price).toLocaleString()}</div>}
+                                {listing.current_bid && <div style={styles.listingContextPrice}>Bid: ${Number(listing.current_bid).toLocaleString()}</div>}
+                              </div>
+                              <span style={styles.listingContextArrow}>→</span>
+                            </div>
                           )}
                         </div>
                         <div style={styles.msgScroll} ref={messagesScrollRef}>
                           {activeMessages.length === 0 && <div style={{ textAlign: "center", color: C.muted, padding: 40 }}>Send the first message.</div>}
-                          {activeMessages.map((m) => (
-                            <div key={m.id} style={{ ...styles.msgBubble, ...(m.sender_id === user.id ? styles.msgMine : styles.msgTheirs), ...(m.is_offer ? styles.msgOffer : {}) }}>
-                              {m.text}
+                          {activeMessages.map((m, idx) => {
+                            const mine = m.sender_id === user.id;
+                            const prev = activeMessages[idx - 1];
+                            // Show timestamp if first message, or 5+ minutes since prev message
+                            const prevTime = prev ? new Date(prev.created_at).getTime() : 0;
+                            const thisTime = new Date(m.created_at).getTime();
+                            const showSeparator = !prev || (thisTime - prevTime) > 5 * 60 * 1000;
+                            return (
+                              <div key={m.id}>
+                                {showSeparator && (
+                                  <div style={styles.msgTimeSeparator}>{formatChatTime(m.created_at)}</div>
+                                )}
+                                <div style={{ ...styles.msgBubble, ...(mine ? styles.msgMine : styles.msgTheirs), ...(m.is_offer ? styles.msgOffer : {}) }}>
+                                  {m.text}
+                                </div>
+                                <div style={{ ...styles.msgTimeStamp, textAlign: mine ? "right" : "left" }}>
+                                  {formatChatTime(m.created_at)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                          {typing && typing.until > Date.now() && (
+                            <div style={styles.typingRow}>
+                              <div style={styles.typingBubble}>
+                                <span style={styles.typingDotMsg}></span>
+                                <span style={{ ...styles.typingDotMsg, animationDelay: "0.15s" }}></span>
+                                <span style={{ ...styles.typingDotMsg, animationDelay: "0.3s" }}></span>
+                              </div>
+                              <span style={styles.typingLabel}>{typing.name} is typing…</span>
                             </div>
-                          ))}
+                          )}
                         </div>
                         <div style={styles.msgInputRow}>
-                          <input style={styles.msgInput} placeholder="Type a message..." value={msgDraft}
-                            onChange={e => setMsgDraft(e.target.value)} onKeyDown={e => e.key === "Enter" && sendMessage()} />
+                          <input
+                            style={styles.msgInput}
+                            placeholder="Type a message..."
+                            value={msgDraft}
+                            onChange={e => {
+                              setMsgDraft(e.target.value);
+                              if (e.target.value.trim()) sendTypingBroadcast();
+                            }}
+                            onKeyDown={e => e.key === "Enter" && sendMessage()}
+                          />
                           <button style={styles.msgSendBtn} onClick={sendMessage}>Send</button>
                         </div>
                       </>
@@ -2678,16 +2883,50 @@ const styles = {
   convoItemActive: { background: C.surface },
   convoAvatar: { fontSize: 28, flexShrink: 0 },
   convoName: { fontWeight: 700, fontSize: 14, marginBottom: 2 },
+  convoNameRow: { display: "flex", alignItems: "center", gap: 8, marginBottom: 2 },
   convoListing: { fontSize: 11, color: C.accent, marginBottom: 4, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" },
   convoLast: { fontSize: 12, color: C.muted, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" },
+  convoItemUnread: { background: "rgba(240,165,0,0.05)" },
+  unreadDot: { width: 8, height: 8, borderRadius: "50%", background: C.red, flexShrink: 0 },
   msgPanel: { flex: 1, display: "flex", flexDirection: "column" },
   msgHeader: { display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: `1px solid ${C.border}` },
   msgListingTag: { fontSize: 11, color: C.accent, background: "rgba(240,165,0,.1)", padding: "4px 10px", borderRadius: 12 },
-  msgScroll: { flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 8 },
+
+  // Listing context card (replaces the plain "Test3" pill)
+  listingContextCard: {
+    display: "flex", alignItems: "center", gap: 10, padding: "8px 12px",
+    background: C.surface, border: `1px solid ${C.border}`, borderRadius: 10,
+    cursor: "pointer", maxWidth: 280, transition: "background .15s",
+  },
+  listingContextImg: { width: 44, height: 44, borderRadius: 6, objectFit: "cover", flexShrink: 0 },
+  listingContextImgPlaceholder: { width: 44, height: 44, borderRadius: 6, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, flexShrink: 0 },
+  listingContextLabel: { fontSize: 9, letterSpacing: 1, color: C.muted, textTransform: "uppercase", fontWeight: 600 },
+  listingContextTitle: { fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.3, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  listingContextPrice: { fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 1 },
+  listingContextArrow: { color: C.muted, fontSize: 14, flexShrink: 0 },
+
+  msgScroll: { flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 4 },
   msgBubble: { maxWidth: "70%", padding: "10px 14px", borderRadius: 14, fontSize: 14, lineHeight: 1.4 },
   msgMine: { alignSelf: "flex-end", background: C.accent, color: "#000" },
   msgTheirs: { alignSelf: "flex-start", background: C.surface, color: C.text, border: `1px solid ${C.border}` },
   msgOffer: { background: "rgba(52, 199, 89, .15)", color: C.green, border: `1px solid ${C.green}`, fontWeight: 700 },
+
+  // Timestamps + separators
+  msgTimeStamp: { fontSize: 10, color: C.muted, marginTop: 2, marginBottom: 6, padding: "0 4px" },
+  msgTimeSeparator: {
+    alignSelf: "center", fontSize: 11, color: C.muted, padding: "8px 14px 4px",
+    margin: "8px 0 4px", letterSpacing: 0.3,
+  },
+
+  // Typing indicator inside the chat panel
+  typingRow: { display: "flex", alignItems: "center", gap: 8, alignSelf: "flex-start", marginTop: 4 },
+  typingBubble: { display: "flex", gap: 4, padding: "8px 12px", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 14 },
+  typingDotMsg: {
+    width: 6, height: 6, borderRadius: "50%", background: C.muted,
+    display: "inline-block", animation: "typingBounce 1.2s infinite ease-in-out",
+  },
+  typingLabel: { fontSize: 11, color: C.muted, fontStyle: "italic" },
+
   msgInputRow: { display: "flex", gap: 10, padding: 14, borderTop: `1px solid ${C.border}` },
   msgInput: { flex: 1, background: C.surface, border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none" },
   msgSendBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },
