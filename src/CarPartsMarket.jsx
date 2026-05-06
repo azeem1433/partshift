@@ -316,6 +316,13 @@ export default function App() {
         0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
         30% { transform: translateY(-6px); opacity: 1; }
       }
+
+      /* Messaging layout — stack vertically on narrow screens */
+      @media (max-width: 720px) {
+        .ps-msg-layout { flex-direction: column !important; height: auto !important; max-height: none !important; }
+        .ps-convo-list { width: 100% !important; min-width: 0 !important; flex: 0 0 auto !important; max-height: 220px !important; border-right: none !important; border-bottom: 1px solid ${C.border} !important; }
+        .ps-msg-panel { width: 100% !important; min-height: 70vh !important; }
+      }
     `;
     document.head.appendChild(styleEl);
 
@@ -1410,8 +1417,8 @@ export default function App() {
               <div style={styles.emptyState}><div style={styles.emptyIcon}>📭</div><p>No conversations yet.</p>
                 <button style={styles.shopBtn} onClick={() => setView("browse")}>Browse Listings</button></div>
             ) : (
-              <div style={styles.msgLayout}>
-                <div style={styles.convoList}>
+              <div className="ps-msg-layout" style={styles.msgLayout}>
+                <div className="ps-convo-list" style={styles.convoList}>
                   {conversations.map(c => {
                     const otherId = c.buyer_id === user.id ? c.seller_id : c.buyer_id;
                     const other = (c.buyer_id === user.id ? c.seller : c.buyer) || users[otherId] || { name: "Unknown", avatar: "👤" };
@@ -1441,7 +1448,7 @@ export default function App() {
                     );
                   })}
                 </div>
-                <div style={styles.msgPanel}>
+                <div className="ps-msg-panel" style={styles.msgPanel}>
                   {activeConvo ? (() => {
                     const c = conversations.find(x => x.id === activeConvo);
                     if (!c) return <div style={{ padding: 80, textAlign: "center", color: C.muted }}>Loading conversation...</div>;
@@ -2925,8 +2932,8 @@ const styles = {
   emptyIcon: { fontSize: 56, marginBottom: 14 },
   shopBtn: { marginTop: 16, background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "12px 28px", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
   savedGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 },
-  msgLayout: { display: "flex", height: 560, maxHeight: "75vh", background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", flexWrap: "wrap" },
-  convoList: { width: 280, minWidth: 240, flex: "0 0 auto", borderRight: `1px solid ${C.border}`, overflowY: "auto" },
+  msgLayout: { display: "flex", height: 560, maxHeight: "75vh", minHeight: 480, background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" },
+  convoList: { width: 280, minWidth: 240, flex: "0 0 280px", borderRight: `1px solid ${C.border}`, overflowY: "auto" },
   convoItem: { display: "flex", gap: 12, padding: 14, borderBottom: `1px solid ${C.border}`, cursor: "pointer", alignItems: "flex-start" },
   convoItemActive: { background: C.surface },
   convoAvatar: { fontSize: 28, flexShrink: 0 },
@@ -2936,7 +2943,7 @@ const styles = {
   convoLast: { fontSize: 12, color: C.muted, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" },
   convoItemUnread: { background: "rgba(240,165,0,0.05)" },
   unreadDot: { width: 8, height: 8, borderRadius: "50%", background: C.red, flexShrink: 0 },
-  msgPanel: { flex: 1, display: "flex", flexDirection: "column" },
+  msgPanel: { flex: "1 1 0", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0 },
   msgHeader: { display: "flex", alignItems: "center", gap: 12, padding: 16, borderBottom: `1px solid ${C.border}` },
   msgListingTag: { fontSize: 11, color: C.accent, background: "rgba(240,165,0,.1)", padding: "4px 10px", borderRadius: 12 },
 
@@ -2953,7 +2960,7 @@ const styles = {
   listingContextPrice: { fontSize: 11, color: C.accent, fontWeight: 700, marginTop: 1 },
   listingContextArrow: { color: C.muted, fontSize: 14, flexShrink: 0 },
 
-  msgScroll: { flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 4 },
+  msgScroll: { flex: "1 1 0", overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 4, minHeight: 0 },
   msgBubble: { maxWidth: "70%", padding: "10px 14px", borderRadius: 14, fontSize: 14, lineHeight: 1.4 },
   msgMine: { alignSelf: "flex-end", background: C.accent, color: "#000" },
   msgTheirs: { alignSelf: "flex-start", background: C.surface, color: C.text, border: `1px solid ${C.border}` },
@@ -2975,7 +2982,7 @@ const styles = {
   },
   typingLabel: { fontSize: 11, color: C.muted, fontStyle: "italic" },
 
-  msgInputRow: { display: "flex", gap: 10, padding: 14, borderTop: `1px solid ${C.border}` },
+  msgInputRow: { display: "flex", gap: 10, padding: 14, borderTop: `1px solid ${C.border}`, background: C.card, flexShrink: 0 },
   msgInput: { flex: 1, background: C.surface, border: `1px solid ${C.border}`, color: C.text, padding: "10px 14px", borderRadius: 8, fontSize: 14, fontFamily: "inherit", outline: "none" },
   msgSendBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, cursor: "pointer", fontFamily: "inherit" },
   profileHeader: { display: "flex", gap: 24, alignItems: "flex-start", padding: 28, background: C.card, border: `1px solid ${C.border}`, borderRadius: 16, marginBottom: 32, flexWrap: "wrap" },
