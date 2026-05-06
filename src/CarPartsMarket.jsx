@@ -301,15 +301,41 @@ export default function App() {
   useEffect(() => {
     const styleEl = document.createElement("style");
     styleEl.innerHTML = `
-      html, body, #root { margin: 0 !important; padding: 0 !important; width: 100% !important; min-height: 100vh; background: ${C.bg}; }
+      html, body, #root {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        min-height: 100vh;
+        background: ${C.bg} !important;
+        overflow-x: hidden !important;
+      }
+      html { color-scheme: light; }
       * { box-sizing: border-box; }
+      img { max-width: 100%; height: auto; }
       @keyframes typingBounce {
         0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
         30% { transform: translateY(-6px); opacity: 1; }
       }
     `;
     document.head.appendChild(styleEl);
-    return () => { document.head.removeChild(styleEl); };
+
+    // Make sure there's a proper viewport meta tag (Vite's index.html may not have one)
+    let viewportMeta = document.querySelector('meta[name="viewport"]');
+    let createdViewport = false;
+    if (!viewportMeta) {
+      viewportMeta = document.createElement("meta");
+      viewportMeta.name = "viewport";
+      document.head.appendChild(viewportMeta);
+      createdViewport = true;
+    }
+    const prevContent = viewportMeta.getAttribute("content");
+    viewportMeta.setAttribute("content", "width=device-width, initial-scale=1, viewport-fit=cover");
+
+    return () => {
+      document.head.removeChild(styleEl);
+      if (createdViewport) document.head.removeChild(viewportMeta);
+      else if (prevContent) viewportMeta.setAttribute("content", prevContent);
+    };
   }, []);
 
   // Filters
@@ -1163,7 +1189,7 @@ export default function App() {
                 </div>
               </div>
               <div style={styles.heroVisual}>
-                <img src="https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80" alt="Performance engine" style={{ width: "100%", height: 360, objectFit: "cover", borderRadius: 16, boxShadow: "0 20px 50px rgba(0,0,0,0.12)" }} />
+                <img src="https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80" alt="Performance engine" style={{ width: "100%", maxHeight: 360, aspectRatio: "4/3", objectFit: "cover", borderRadius: 16, boxShadow: "0 20px 50px rgba(0,0,0,0.12)" }} />
               </div>
             </section>
 
@@ -2742,24 +2768,24 @@ function VideoPlayer({ video, videos, channel, onBack, onSelectVideo, onProfile,
 const styles = {
   root: { fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif", background: C.bg, color: C.text, minHeight: "100vh", width: "100%", display: "flex", flexDirection: "column", margin: 0 },
   imgFill: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
-  header: { background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100 },
-  headerInner: { maxWidth: 1200, margin: "0 auto", padding: "0 24px", height: 64, display: "flex", alignItems: "center", gap: 24 },
-  logo: { display: "flex", alignItems: "center", gap: 10, marginRight: "auto", cursor: "pointer" },
+  header: { background: C.surface, borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, zIndex: 100, width: "100%" },
+  headerInner: { maxWidth: 1200, margin: "0 auto", padding: "0 16px", minHeight: 64, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" },
+  logo: { display: "flex", alignItems: "center", gap: 10, marginRight: "auto", cursor: "pointer", flexShrink: 0 },
   logoIcon: { fontSize: 28, color: C.accent },
   logoText: { fontSize: 20, fontWeight: 700, letterSpacing: 3 },
-  nav: { display: "flex", gap: 4 },
-  navBtn: { background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "8px 14px", borderRadius: 6, fontSize: 13, letterSpacing: 1, fontFamily: "inherit" },
+  nav: { display: "flex", gap: 4, flexWrap: "wrap" },
+  navBtn: { background: "none", border: "none", color: C.muted, cursor: "pointer", padding: "8px 12px", borderRadius: 6, fontSize: 13, letterSpacing: 1, fontFamily: "inherit", whiteSpace: "nowrap" },
   navBtnActive: { color: C.accent, background: "rgba(240,165,0,.1)" },
   headerRight: { display: "flex", alignItems: "center", gap: 8 },
   iconBtn: { background: "none", border: "none", cursor: "pointer", fontSize: 18, padding: "8px 10px", borderRadius: 8, position: "relative", color: C.text },
   dot: { background: C.red, color: "#fff", fontSize: 10, fontWeight: 700, borderRadius: 10, padding: "1px 6px", position: "absolute", top: 0, right: 0 },
   userPill: { display: "flex", alignItems: "center", gap: 8, background: C.card, border: `1px solid ${C.border}`, color: C.text, padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontFamily: "inherit" },
   authBtn: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "8px 18px", fontWeight: 700, cursor: "pointer", fontSize: 13, fontFamily: "inherit", letterSpacing: 1 },
-  main: { flex: 1, maxWidth: 1200, margin: "0 auto", width: "100%", padding: "0 24px" },
-  hero: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "64px 0 40px", gap: 32 },
+  main: { flex: 1, maxWidth: 1200, margin: "0 auto", width: "100%", padding: "0 16px" },
+  hero: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "64px 0 40px", gap: 32, flexWrap: "wrap" },
   heroContent: { flex: 1 },
   heroEyebrow: { fontSize: 11, letterSpacing: 4, color: C.accent, textTransform: "uppercase", marginBottom: 16 },
-  heroTitle: { fontSize: 56, fontWeight: 800, lineHeight: 1.1, margin: "0 0 20px", fontFamily: "'Georgia', serif" },
+  heroTitle: { fontSize: "clamp(32px, 6vw, 56px)", fontWeight: 800, lineHeight: 1.1, margin: "0 0 20px", fontFamily: "'Georgia', serif", wordBreak: "break-word" },
   heroSub: { color: C.muted, fontSize: 17, lineHeight: 1.6, maxWidth: 480, marginBottom: 32 },
   heroStats: { display: "flex", gap: 36, marginBottom: 28 },
   heroStat: { display: "flex", flexDirection: "column", gap: 4 },
@@ -2768,10 +2794,10 @@ const styles = {
   heroCtas: { display: "flex", gap: 12 },
   heroCta: { background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "13px 22px", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "inherit", letterSpacing: 1 },
   heroCtaGhost: { background: "transparent", color: C.text, border: `1px solid ${C.border}`, borderRadius: 8, padding: "13px 22px", fontWeight: 600, cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
-  heroVisual: { width: 480, flexShrink: 0 },
+  heroVisual: { flex: "1 1 320px", maxWidth: 480, minWidth: 0 },
   heroGear: { fontSize: 180, opacity: 0.07 },
   carsHero: { padding: "48px 0 28px" },
-  carsTitle: { fontSize: 48, fontWeight: 800, lineHeight: 1.1, margin: "0 0 14px", fontFamily: "'Georgia', serif" },
+  carsTitle: { fontSize: "clamp(28px, 5vw, 48px)", fontWeight: 800, lineHeight: 1.1, margin: "0 0 14px", fontFamily: "'Georgia', serif", wordBreak: "break-word" },
   auctionHero: { padding: "48px 0 28px" },
   auctionBadge: { display: "inline-block", background: C.purple, color: "#fff", padding: "6px 14px", borderRadius: 6, fontSize: 11, fontWeight: 800, letterSpacing: 2, marginBottom: 14 },
   conditionRow: { display: "flex", gap: 8, marginBottom: 16 },
@@ -2872,13 +2898,13 @@ const styles = {
   authSub: { color: C.muted, fontSize: 14, margin: "0 0 8px" },
   authNote: { color: C.muted, fontSize: 12, textAlign: "center", margin: 0 },
   pageWrap: { padding: "40px 0 80px" },
-  pageTitle: { fontSize: 32, fontWeight: 800, marginBottom: 28, fontFamily: "'Georgia', serif" },
+  pageTitle: { fontSize: "clamp(24px, 4.5vw, 32px)", fontWeight: 800, marginBottom: 28, fontFamily: "'Georgia', serif" },
   emptyState: { textAlign: "center", padding: 80, color: C.muted },
   emptyIcon: { fontSize: 56, marginBottom: 14 },
   shopBtn: { marginTop: 16, background: C.accent, color: "#000", border: "none", borderRadius: 8, padding: "12px 28px", fontWeight: 700, cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
   savedGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 20 },
-  msgLayout: { display: "flex", height: 560, background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden" },
-  convoList: { width: 280, borderRight: `1px solid ${C.border}`, overflowY: "auto" },
+  msgLayout: { display: "flex", height: 560, maxHeight: "75vh", background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", flexWrap: "wrap" },
+  convoList: { width: 280, minWidth: 240, flex: "0 0 auto", borderRight: `1px solid ${C.border}`, overflowY: "auto" },
   convoItem: { display: "flex", gap: 12, padding: 14, borderBottom: `1px solid ${C.border}`, cursor: "pointer", alignItems: "flex-start" },
   convoItemActive: { background: C.surface },
   convoAvatar: { fontSize: 28, flexShrink: 0 },
@@ -2948,7 +2974,7 @@ const styles = {
   reviewText: { color: C.muted, fontSize: 14, lineHeight: 1.6, margin: 0 },
   sellWrap: { padding: "40px 0 80px", maxWidth: 720, margin: "0 auto" },
   sellHeader: { marginBottom: 24, textAlign: "center" },
-  sellTitle: { fontSize: 36, fontWeight: 800, margin: "0 0 10px", fontFamily: "'Georgia', serif" },
+  sellTitle: { fontSize: "clamp(26px, 4.5vw, 36px)", fontWeight: 800, margin: "0 0 10px", fontFamily: "'Georgia', serif" },
   sellSub: { color: C.muted, fontSize: 15 },
   sellToggle: { display: "flex", gap: 8, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12, padding: 6, marginBottom: 24 },
   toggleBtn: { flex: 1, background: "transparent", border: "none", color: C.muted, padding: "12px 0", borderRadius: 8, cursor: "pointer", fontSize: 14, fontFamily: "inherit" },
@@ -3064,7 +3090,7 @@ const styles = {
 
   // Footer links
   footer: { background: C.surface, borderTop: `1px solid ${C.border}`, padding: "24px 0", marginTop: "auto" },
-  footerInner: { maxWidth: 1200, margin: "0 auto", padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 },
+  footerInner: { maxWidth: 1200, margin: "0 auto", padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 },
   footerLogo: { fontWeight: 700, letterSpacing: 3, color: C.accent },
   footerLinks: { fontSize: 12, color: C.muted, letterSpacing: 1 },
   footerLinkRow: { display: "flex", alignItems: "center", gap: 4 },
@@ -3073,7 +3099,7 @@ const styles = {
 
   // Legal / Support pages
   legalWrap: { maxWidth: 800, margin: "0 auto", padding: "40px 24px 80px", lineHeight: 1.65 },
-  legalTitle: { fontSize: 36, fontWeight: 800, margin: "16px 0 8px", color: C.text },
+  legalTitle: { fontSize: "clamp(26px, 4.5vw, 36px)", fontWeight: 800, margin: "16px 0 8px", color: C.text },
   legalDate: { color: C.muted, fontSize: 13, marginBottom: 28 },
   legalH2: { fontSize: 18, fontWeight: 700, margin: "32px 0 10px", color: C.text },
   legalP: { fontSize: 14, color: C.text, marginBottom: 12 },
