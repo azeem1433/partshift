@@ -203,7 +203,8 @@ export default function App() {
   const [view, setView] = useState("browse");
   const [user, setUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
-  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "" });
+  const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "", referralCode: "" });
+  const [referralStats, setReferralStats] = useState(null);
 
   const [parts, setParts] = useState([]);
   const [cars, setCars] = useState([]);
@@ -270,6 +271,15 @@ export default function App() {
         setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
       });
     });
+
+    // Detect referral code in URL (?ref=PS-XXXXXX)
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get("ref");
+    if (refCode) {
+      setAuthForm(prev => ({ ...prev, referralCode: refCode.toUpperCase() }));
+      setView("auth");
+      setAuthMode("signup");
+    }
 
     return () => {
       mounted = false;
@@ -830,6 +840,13 @@ export default function App() {
         zip: authForm.zip,
       });
       if (error) return alert(error.message);
+
+      // Apply referral code if provided (silently ignore errors — don't block signup)
+      if (authForm.referralCode.trim()) {
+        await api.applyReferralCode(authForm.referralCode);
+      }
+      // Auto-generate a referral code for the new user
+      await api.generateReferralCode();
     } else {
       if (!authForm.email || !authForm.password) {
         alert("Enter email and password.");
@@ -850,7 +867,7 @@ export default function App() {
       setUsers((prev) => ({ ...prev, [normalized.id]: normalized }));
     }
 
-    setAuthForm({ name: "", email: "", password: "", zip: "" });
+    setAuthForm({ name: "", email: "", password: "", zip: "", referralCode: "" });
     setView("browse");
   };
   const toggleSave = (id) => {
@@ -1179,6 +1196,13 @@ export default function App() {
               <div style={styles.formGroup}><label style={styles.formLabel}>Email</label><input style={styles.formInput} type="email" placeholder="you@example.com" value={authForm.email} onChange={e => setAuthForm({ ...authForm, email: e.target.value })} /></div>
               <div style={styles.formGroup}><label style={styles.formLabel}>Password</label><input style={styles.formInput} type="password" placeholder="••••••••" value={authForm.password} onChange={e => setAuthForm({ ...authForm, password: e.target.value })} /></div>
               {authMode === "signup" && <div style={styles.formGroup}><label style={styles.formLabel}>Zip Code</label><input style={styles.formInput} placeholder="37064" value={authForm.zip} onChange={e => setAuthForm({ ...authForm, zip: e.target.value })} /></div>}
+              {authMode === "signup" && (
+                <div style={styles.formGroup}>
+                  <label style={styles.formLabel}>Referral Code <span style={{ color: C.muted, fontWeight: 400 }}>(optional)</span></label>
+                  <input style={{ ...styles.formInput, textTransform: "uppercase" }} placeholder="PS-XXXXXX" value={authForm.referralCode} onChange={e => setAuthForm({ ...authForm, referralCode: e.target.value.toUpperCase() })} />
+                  {authForm.referralCode && <p style={{ margin: "4px 0 0", fontSize: 12, color: C.green }}>Referral code applied — your referrer earns $5 credit!</p>}
+                </div>
+              )}
               <button style={styles.submitBtn} onClick={handleAuth}>{authMode === "login" ? "Sign In →" : "Create Account →"}</button>
               <p style={styles.authNote}>Real Supabase login — use your email and password.</p>
             </div>
@@ -1567,6 +1591,26 @@ export default function App() {
           const userListings = allListings.filter(l => l.sellerId === profileUserId);
           const userReviews = sellerReviews(profileUserId);
           const isMe = user && u.id === user.id;
+
+          // Load referral stats when viewing own profile
+          if (isMe && referralStats === null) {
+            api.fetchReferralStats().then(stats => setReferralStats(stats));
+          }
+
+          const referralLink = referralStats?.code
+            ? `${window.location.origin}${window.location.pathname}?ref=${referralStats.code}`
+            : null;
+
+          const copyReferralLink = () => {
+            if (!referralLink) return;
+            navigator.clipboard.writeText(referralLink).then(() => alert("Referral link copied!"));
+          };
+
+          const shareOnX = () => {
+            if (!referralLink) return;
+            window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Buy, sell, and bid on car parts with verified enthusiasts on PartShift! Use my link to join: " + referralLink)}`, "_blank");
+          };
+
           return (
             <section style={styles.pageWrap}>
               <button onClick={() => setView("browse")} style={styles.backBtn}>← Back</button>
@@ -1584,6 +1628,59 @@ export default function App() {
                 </div>
                 {isMe && <button style={styles.signOutBtn} onClick={() => { setUser(null); setView("browse"); }}>Sign Out</button>}
               </div>
+              {isMe && referralStats !== null && (
+                <div style={{ marginBottom: 36, background: "linear-gradient(135deg, #1a1d24 0%, #2d3142 100%)", borderRadius: 16, padding: 28, color: "#fff" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
+                    <span style={{ fontSize: 28 }}>🎁</span>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>Invite Friends &amp; Earn</h3>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Earn $5 in PartShift credits for every friend who joins using your link.</p>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 16, marginTop: 20, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 100, background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 18px", textAlign: "center" }}>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: C.accent }}>{referralStats.referrals.length}</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>Friends Joined</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 100, background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 18px", textAlign: "center" }}>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: C.green }}>${referralStats.credits}</div>
+                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>Credits Earned</div>
+                    </div>
+                  </div>
+
+                  {referralStats.code ? (
+                    <>
+                      <div style={{ marginTop: 20 }}>
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 6, textTransform: "uppercase", letterSpacing: 1 }}>Your Referral Code</div>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <div style={{ flex: 1, background: "rgba(255,255,255,0.1)", borderRadius: 8, padding: "10px 14px", fontFamily: "monospace", fontSize: 15, fontWeight: 700, letterSpacing: 2, color: C.accent }}>{referralStats.code}</div>
+                          <button onClick={copyReferralLink} style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 16px", fontWeight: 700, cursor: "pointer", fontSize: 13, whiteSpace: "nowrap" }}>Copy Link</button>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                        <button onClick={shareOnX} style={{ flex: 1, background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>𝕏 Share on X</button>
+                        <button onClick={() => { if (navigator.share && referralLink) navigator.share({ title: "Join PartShift", text: "Buy, sell & bid on car parts with verified enthusiasts.", url: referralLink }); else copyReferralLink(); }} style={{ flex: 1, background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "9px 14px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>↑ Share</button>
+                      </div>
+                    </>
+                  ) : (
+                    <button onClick={async () => { const { data } = await api.generateReferralCode(); if (data) setReferralStats(prev => ({ ...prev, code: data })); }} style={{ marginTop: 20, width: "100%", background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "12px", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Generate My Referral Code</button>
+                  )}
+
+                  {referralStats.referrals.length > 0 && (
+                    <div style={{ marginTop: 20, borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: 16 }}>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 10, textTransform: "uppercase", letterSpacing: 1 }}>Who You've Referred</div>
+                      {referralStats.referrals.slice(0, 5).map(r => (
+                        <div key={r.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+                          <span style={{ fontSize: 14, color: "rgba(255,255,255,0.85)" }}>{r.referred?.name || "New Member"}</span>
+                          <span style={{ fontSize: 12, color: C.green, fontWeight: 700 }}>+$5</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={styles.profileTabs}>
                 <h3 style={styles.profileSection}>Listings ({userListings.length})</h3>
                 {userListings.length === 0 ? <p style={{ color: C.muted }}>No active listings.</p> : (

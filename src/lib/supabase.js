@@ -204,6 +204,56 @@ export const api = {
     }
   },
 
+  // ---------- REFERRALS ----------
+  async generateReferralCode() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+    const { data: existing } = await supabase
+      .from("referral_codes")
+      .select("code")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existing) return { data: existing.code };
+    const code = "PS-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const { error } = await supabase.from("referral_codes").insert({ user_id: user.id, code });
+    if (error) return { error };
+    return { data: code };
+  },
+
+  async applyReferralCode(code) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+    const { data: refCode } = await supabase
+      .from("referral_codes")
+      .select("user_id")
+      .eq("code", code.toUpperCase().trim())
+      .maybeSingle();
+    if (!refCode) return { error: "Invalid referral code" };
+    if (refCode.user_id === user.id) return { error: "Cannot use your own referral code" };
+    const { error } = await supabase.from("referrals").insert({
+      referrer_id: refCode.user_id,
+      referred_id: user.id,
+      code: code.toUpperCase().trim(),
+      status: "completed",
+    });
+    return { error };
+  },
+
+  async fetchReferralStats() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { code: null, referrals: [], credits: 0 };
+    const [{ data: codeRow }, { data: refs }] = await Promise.all([
+      supabase.from("referral_codes").select("code").eq("user_id", user.id).maybeSingle(),
+      supabase.from("referrals").select("*, referred:profiles!referred_id(name)").eq("referrer_id", user.id).order("created_at", { ascending: false }),
+    ]);
+    const referrals = refs || [];
+    return {
+      code: codeRow?.code || null,
+      referrals,
+      credits: referrals.filter(r => r.status === "completed").length * 5,
+    };
+  },
+
   // ---------- IMAGE UPLOAD ----------
   async uploadListingImage(file) {
     const { data: { user } } = await supabase.auth.getUser();
