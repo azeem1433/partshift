@@ -86,6 +86,8 @@ export const api = {
       auction_id: auctionId, bidder_id: user.id, amount,
     });
     if (bidError) return { error: bidError };
+    // First bid counts as a purchase — complete any pending referral for this user
+    this.completeReferralOnPurchase();
     // Update auction current_bid + count
     const { data, error } = await supabase
       .from("auctions")
@@ -137,6 +139,8 @@ export const api = {
 
   async sendMessage({ conversationId, text, isOffer = false, offerAmount = null }) {
     const { data: { user } } = await supabase.auth.getUser();
+    // Sending an offer counts as a purchase — complete any pending referral
+    if (isOffer) this.completeReferralOnPurchase();
     return await supabase.from("messages").insert({
       conversation_id: conversationId,
       sender_id: user.id,
@@ -230,13 +234,27 @@ export const api = {
       .maybeSingle();
     if (!refCode) return { error: "Invalid referral code" };
     if (refCode.user_id === user.id) return { error: "Cannot use your own referral code" };
+    // Status starts as "pending" — becomes "completed" on first purchase
     const { error } = await supabase.from("referrals").insert({
       referrer_id: refCode.user_id,
       referred_id: user.id,
       code: code.toUpperCase().trim(),
-      status: "completed",
+      status: "pending",
     });
     return { error };
+  },
+
+  async completeReferralOnPurchase() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: pending } = await supabase
+      .from("referrals")
+      .select("id")
+      .eq("referred_id", user.id)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (!pending) return;
+    await supabase.from("referrals").update({ status: "completed" }).eq("id", pending.id);
   },
 
   async fetchReferralStats() {
@@ -247,10 +265,14 @@ export const api = {
       supabase.from("referrals").select("*, referred:profiles!referred_id(name)").eq("referrer_id", user.id).order("created_at", { ascending: false }),
     ]);
     const referrals = refs || [];
+    const completed = referrals.filter(r => r.status === "completed");
+    const pending = referrals.filter(r => r.status === "pending");
     return {
       code: codeRow?.code || null,
       referrals,
-      credits: referrals.filter(r => r.status === "completed").length * 5,
+      completed: completed.length,
+      pending: pending.length,
+      credits: completed.length * 5,
     };
   },
 

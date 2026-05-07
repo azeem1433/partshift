@@ -287,6 +287,12 @@ export default function App() {
     };
   }, []);
 
+  // Load referral stats whenever the user logs in
+  useEffect(() => {
+    if (!user) { setReferralStats(null); return; }
+    api.fetchReferralStats().then(stats => setReferralStats(stats));
+  }, [user?.id]);
+
   // Video state
   const [videoCat, setVideoCat] = useState("All");
   const [videoLevel, setVideoLevel] = useState("Any Level");
@@ -1239,6 +1245,45 @@ export default function App() {
               </div>
             </section>
 
+            {user && referralStats && (
+              <div style={{ margin: "0 0 28px", background: "linear-gradient(135deg, #1a1d24 0%, #2d3142 100%)", borderRadius: 16, padding: "22px 28px", display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    <span style={{ fontSize: 22 }}>🎁</span>
+                    <span style={{ color: "#fff", fontWeight: 800, fontSize: 16, letterSpacing: 0.5 }}>Invite Friends &amp; Earn $5</span>
+                  </div>
+                  <p style={{ margin: 0, color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
+                    Share your link. Earn $5 credit when your friend makes their first purchase.
+                    {referralStats.pending > 0 && <span style={{ color: C.accent, fontWeight: 600 }}> · {referralStats.pending} pending</span>}
+                    {referralStats.credits > 0 && <span style={{ color: "#4ade80", fontWeight: 600 }}> · ${referralStats.credits} earned</span>}
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  {referralStats.code ? (
+                    <>
+                      <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 14px", fontFamily: "monospace", fontWeight: 700, fontSize: 14, letterSpacing: 2, color: C.accent }}>{referralStats.code}</div>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?ref=${referralStats.code}`).then(() => alert("Referral link copied!"))}
+                        style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        Copy Link
+                      </button>
+                      <button
+                        onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Buy, sell & bid on car parts with verified enthusiasts on PartShift! Join with my link: " + window.location.origin + window.location.pathname + "?ref=" + referralStats.code)}`, "_blank")}
+                        style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                        𝕏 Share
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={async () => { const { data } = await api.generateReferralCode(); if (data) setReferralStats(prev => ({ ...prev, code: data })); }}
+                      style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      Get My Referral Link
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div style={styles.conditionRow}>
               {[["all", "All Items"], ["new", "🆕 New Only"], ["used", "♻️ Used Only"]].map(([v, l]) => (
                 <button key={v} onClick={() => setConditionFilter(v)} style={{ ...styles.condBtn, ...(conditionFilter === v ? styles.condBtnActive : {}) }}>{l}</button>
@@ -1592,11 +1637,6 @@ export default function App() {
           const userReviews = sellerReviews(profileUserId);
           const isMe = user && u.id === user.id;
 
-          // Load referral stats when viewing own profile
-          if (isMe && referralStats === null) {
-            api.fetchReferralStats().then(stats => setReferralStats(stats));
-          }
-
           const referralLink = referralStats?.code
             ? `${window.location.origin}${window.location.pathname}?ref=${referralStats.code}`
             : null;
@@ -1634,7 +1674,7 @@ export default function App() {
                     <span style={{ fontSize: 28 }}>🎁</span>
                     <div>
                       <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, letterSpacing: 1 }}>Invite Friends &amp; Earn</h3>
-                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Earn $5 in PartShift credits for every friend who joins using your link.</p>
+                      <p style={{ margin: "4px 0 0", fontSize: 13, color: "rgba(255,255,255,0.65)" }}>Earn $5 in PartShift credits for every friend who joins and makes their first purchase.</p>
                     </div>
                   </div>
 
@@ -1642,6 +1682,7 @@ export default function App() {
                     <div style={{ flex: 1, minWidth: 100, background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 18px", textAlign: "center" }}>
                       <div style={{ fontSize: 28, fontWeight: 800, color: C.accent }}>{referralStats.referrals.length}</div>
                       <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>Friends Joined</div>
+                      {referralStats.pending > 0 && <div style={{ fontSize: 11, color: C.accent, marginTop: 4 }}>{referralStats.pending} pending purchase</div>}
                     </div>
                     <div style={{ flex: 1, minWidth: 100, background: "rgba(255,255,255,0.08)", borderRadius: 10, padding: "14px 18px", textAlign: "center" }}>
                       <div style={{ fontSize: 28, fontWeight: 800, color: C.green }}>${referralStats.credits}</div>
