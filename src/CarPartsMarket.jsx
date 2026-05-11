@@ -70,21 +70,26 @@ const initialReviews = [
   { id: 4, sellerId: "u4", buyerName: "Carlos M.", rating: 5, date: "1 week ago", text: "Supercharger kit was complete. Highly recommended." },
 ];
 
-// === VIDEOS === (repair tutorials, how-tos, DIY guides)
-const initialVideos = [
-  { id: 301, title: "How to Replace Brake Pads & Rotors", category: "Brakes", level: "Beginner", duration: "12:48", views: 142000, likes: 3800, channel: "GarageProTools", channelId: "u3", youtubeId: "eHBB5EFIOh0", thumb: "https://images.unsplash.com/photo-1635073908681-b4dfb7f0aaa6?w=600&q=80", desc: "Complete walkthrough including tools needed, torque specs, and the bedding-in procedure. Works for most cars.", tags: ["brakes", "diy", "maintenance"] },
-  { id: 302, title: "Coilover Install on a 2018 WRX STI", category: "Suspension", level: "Intermediate", duration: "23:15", views: 89000, likes: 2400, channel: "ChassisTech", channelId: "u5", youtubeId: "0Ck4MZFiAd4", thumb: "https://images.unsplash.com/photo-1568844293986-8d0400bd4745?w=600&q=80", desc: "Step-by-step KW V3 coilover installation including corner-balancing tips.", tags: ["suspension", "subaru", "install"] },
-  { id: 303, title: "Diagnosing Misfires with an OBD2 Scanner", category: "Diagnostics", level: "Beginner", duration: "8:22", views: 256000, likes: 6100, channel: "GarageProTools", channelId: "u3", youtubeId: "GdfEEMonOhQ", thumb: "https://images.unsplash.com/photo-1632823471565-1ecdf5c6da77?w=600&q=80", desc: "Read codes, identify the cylinder, and narrow down causes (coil pack, plug, injector).", tags: ["obd2", "diagnostics", "misfire"] },
-  { id: 304, title: "Turbo Install: Garrett GTX3582R", category: "Engine", level: "Advanced", duration: "47:30", views: 64000, likes: 1900, channel: "TurboNation", channelId: "u4", youtubeId: "23WNKG_RCKI", thumb: "https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80", desc: "Full bolt-on turbo install. Oil and coolant lines, downpipe routing, tuning preparation.", tags: ["turbo", "engine", "advanced"] },
-  { id: 305, title: "Cat-Back Exhaust Install in 30 Minutes", category: "Exhaust", level: "Beginner", duration: "11:05", views: 178000, likes: 4500, channel: "SpeedKraft", channelId: "u2", youtubeId: "Q7s4TqWvABQ", thumb: "https://images.unsplash.com/photo-1605152276897-4f618f831968?w=600&q=80", desc: "Easy weekend modification. Just hand tools required. Sound clip at the end.", tags: ["exhaust", "diy", "easy"] },
-  { id: 306, title: "Cold Air Intake: Worth It or Marketing Hype?", category: "Engine", level: "Beginner", duration: "9:40", views: 312000, likes: 8200, channel: "SpeedKraft", channelId: "u2", youtubeId: "3GBXbEPkSCA", thumb: "https://images.unsplash.com/photo-1486496572940-2bb2341fdbdf?w=600&q=80", desc: "Real dyno numbers, sound test, and an honest verdict on intake modifications.", tags: ["intake", "review", "dyno"] },
-  { id: 307, title: "Changing Your Own Oil — Full Walkthrough", category: "Maintenance", level: "Beginner", duration: "7:18", views: 524000, likes: 12000, channel: "GarageProTools", channelId: "u3", youtubeId: "0pesKQTOUbA", thumb: "https://images.unsplash.com/photo-1486754735734-325b5831c3ad?w=600&q=80", desc: "Save fifty dollars at every oil change. Covers tools, oil selection, and proper disposal.", tags: ["maintenance", "oil", "basics"] },
-  { id: 308, title: "EV Battery Replacement: What You Need to Know", category: "Maintenance", level: "Advanced", duration: "18:55", views: 41000, likes: 1100, channel: "EVNation", channelId: "u6", youtubeId: "O4ogCMWDYqk", thumb: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=600&q=80", desc: "Cost, available options, refurbished versus new, and key safety considerations.", tags: ["ev", "battery", "tesla"] },
-  { id: 309, title: "Flushing Brake Fluid (DOT 3/4) the Right Way", category: "Brakes", level: "Intermediate", duration: "14:22", views: 98000, likes: 2700, channel: "GarageProTools", channelId: "u3", youtubeId: "VCrFuCe33i0", thumb: "https://images.unsplash.com/photo-1599256630537-90681cf6f9b1?w=600&q=80", desc: "Two-person bleed and one-person vacuum methods. Avoid the dreaded spongy pedal.", tags: ["brakes", "fluid", "maintenance"] },
-  { id: 310, title: "Wheel Bearing Replacement (Front Hub)", category: "Suspension", level: "Intermediate", duration: "26:40", views: 73000, likes: 1800, channel: "ChassisTech", channelId: "u5", youtubeId: "oqWpSFxIpFY", thumb: "https://images.unsplash.com/photo-1611821064430-0d40291d0f0b?w=600&q=80", desc: "Diagnosing the bad bearing, press-out tools, and proper torque specs.", tags: ["bearing", "suspension", "diy"] },
-  { id: 311, title: "Reading a Wiring Diagram: Beginner's Guide", category: "Diagnostics", level: "Beginner", duration: "15:10", views: 187000, likes: 4900, channel: "GarageProTools", channelId: "u3", youtubeId: "CtvTSgdVMp8", thumb: "https://images.unsplash.com/photo-1617886322207-6f504e7472c5?w=600&q=80", desc: "Decode any factory service manual diagram. Symbols, color codes, signal flow.", tags: ["wiring", "electrical", "basics"] },
-  { id: 312, title: "Restoration: Bringing a '69 Camaro Back to Life", category: "Restoration", level: "Advanced", duration: "1:02:34", views: 218000, likes: 7400, channel: "SpeedKraft", channelId: "u2", youtubeId: "6ofNIRFMCBs", thumb: "https://images.unsplash.com/photo-1567818735868-e71b99932e29?w=600&q=80", desc: "Multi-month restoration documentary covering bodywork, paint, and full drivetrain rebuild.", tags: ["classic", "restoration", "vintage"] },
-];
+// === VIDEOS — populated at runtime from YouTube "most viewed automotive" search ===
+const initialVideos = []; // loaded dynamically on mount
+
+// Guess a PartShift category from a video title
+const guessCategory = (title) => {
+  const t = title.toLowerCase();
+  if (/brake|rotor|caliper|pad/.test(t)) return "Brakes";
+  if (/suspension|coilover|spring|strut|bearing|alignment/.test(t)) return "Suspension";
+  if (/turbo|engine|intake|spark plug|timing|head gasket|carburetor/.test(t)) return "Engine";
+  if (/exhaust|muffler|cat-back|downpipe/.test(t)) return "Exhaust";
+  if (/obd|diagnostic|misfire|check engine|scanner|wiring|electrical/.test(t)) return "Diagnostics";
+  if (/restor|vintage|classic|rebuild|rat rod/.test(t)) return "Restoration";
+  return "Maintenance";
+};
+const guessLevel = (title) => {
+  const t = title.toLowerCase();
+  if (/beginner|easy|simple|quick|basic|diy/.test(t)) return "Beginner";
+  if (/advanced|rebuild|turbo|swap|timing belt|overhaul/.test(t)) return "Advanced";
+  return "Intermediate";
+};
 
 const videoCategories = ["All", "Brakes", "Suspension", "Engine", "Exhaust", "Diagnostics", "Maintenance", "Restoration"];
 const videoLevels = ["Any Level", "Beginner", "Intermediate", "Advanced"];
@@ -346,12 +351,50 @@ export default function App() {
   const [videoComments, setVideoComments] = useState({});
   const [commentDraft, setCommentDraft] = useState("");
   const [likedVideos, setLikedVideos] = useState([]);
+  const [videosLoading, setVideosLoading] = useState(false);
   const [showAddVideo, setShowAddVideo] = useState(false);
   const [addVideoUrl, setAddVideoUrl] = useState("");
   const [addVideoTitle, setAddVideoTitle] = useState("");
   const [addVideoCat, setAddVideoCat] = useState("Maintenance");
   const [addVideoLevel, setAddVideoLevel] = useState("Beginner");
   const [addVideoDesc, setAddVideoDesc] = useState("");
+
+  // Fetch top automotive videos on first load (replaces static initialVideos)
+  useEffect(() => {
+    const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+    if (!apiKey || apiKey === "YOUR_YOUTUBE_DATA_API_KEY_HERE") return;
+    setVideosLoading(true);
+    const queries = [
+      "car repair DIY how to fix",
+      "oil change how to",
+      "brake replacement tutorial",
+    ];
+    const q = queries[Math.floor(Math.random() * queries.length)];
+    fetch(
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q)}&type=video&maxResults=12&order=viewCount&key=${apiKey}`
+    )
+      .then(r => (r.ok ? r.json() : Promise.reject()))
+      .then(data => {
+        const items = (data.items || []).map(item => ({
+          id: "yt-home-" + item.id.videoId,
+          youtubeId: item.id.videoId,
+          title: item.snippet.title,
+          channel: item.snippet.channelTitle,
+          channelId: item.snippet.channelId,
+          thumb: item.snippet.thumbnails.high?.url || `https://img.youtube.com/vi/${item.id.videoId}/hqdefault.jpg`,
+          desc: item.snippet.description || "",
+          category: guessCategory(item.snippet.title),
+          level: guessLevel(item.snippet.title),
+          duration: "–",
+          views: 0,
+          likes: 0,
+          tags: [item.snippet.channelTitle.toLowerCase()],
+        }));
+        if (items.length) setVideos(items);
+      })
+      .catch(() => {})
+      .finally(() => setVideosLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // YouTube live search state
   const [youtubeResults, setYoutubeResults] = useState([]);
@@ -1553,7 +1596,7 @@ export default function App() {
                     style={{ ...styles.locModeBtn, ...(videoLevel === lv ? styles.locModeBtnActive : {}) }}>{lv}</button>
                 ))}
                 <span style={{ marginLeft: "auto", color: C.muted, fontSize: 12 }}>
-                  {videos.filter(v => (videoCat === "All" || v.category === videoCat) && (videoLevel === "Any Level" || v.level === videoLevel) && (v.title.toLowerCase().includes(videoSearch.toLowerCase()) || v.tags.some(t => t.includes(videoSearch.toLowerCase())))).length} videos
+                  {videosLoading ? "Loading…" : `${videos.filter(v => (videoCat === "All" || v.category === videoCat) && (videoLevel === "Any Level" || v.level === videoLevel) && (!videoSearch.trim() || v.title.toLowerCase().includes(videoSearch.toLowerCase()) || v.tags.some(t => t.includes(videoSearch.toLowerCase())))).length} videos`}
                 </span>
               </div>
               <div style={styles.catRow}>
@@ -1564,13 +1607,24 @@ export default function App() {
             </section>
 
             <section style={styles.videoGrid}>
-              {videos
-                .filter(v => videoCat === "All" || v.category === videoCat)
-                .filter(v => videoLevel === "Any Level" || v.level === videoLevel)
-                .filter(v => v.title.toLowerCase().includes(videoSearch.toLowerCase()) || v.tags.some(t => t.includes(videoSearch.toLowerCase())))
-                .map(v => (
-                  <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} />
-                ))}
+              {videosLoading
+                ? Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} style={{ background: C.card, borderRadius: 14, overflow: "hidden", boxShadow: "0 1px 6px rgba(0,0,0,0.07)" }}>
+                      <div style={{ width: "100%", paddingTop: "56.25%", background: "#e4e7ec", animation: "pulse 1.4s ease-in-out infinite" }} />
+                      <div style={{ padding: "12px 14px 14px" }}>
+                        <div style={{ height: 14, background: "#e4e7ec", borderRadius: 6, marginBottom: 8, width: "80%", animation: "pulse 1.4s ease-in-out infinite" }} />
+                        <div style={{ height: 11, background: "#e4e7ec", borderRadius: 6, width: "50%", animation: "pulse 1.4s ease-in-out infinite" }} />
+                      </div>
+                    </div>
+                  ))
+                : videos
+                    .filter(v => videoCat === "All" || v.category === videoCat)
+                    .filter(v => videoLevel === "Any Level" || v.level === videoLevel)
+                    .filter(v => !videoSearch.trim() || v.title.toLowerCase().includes(videoSearch.toLowerCase()) || v.tags.some(t => t.includes(videoSearch.toLowerCase())))
+                    .map(v => (
+                      <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} />
+                    ))
+              }
             </section>
 
             {/* ── YouTube live search results ── */}
