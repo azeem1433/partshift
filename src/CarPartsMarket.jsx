@@ -330,6 +330,56 @@ export default function App() {
   const [addVideoLevel, setAddVideoLevel] = useState("Beginner");
   const [addVideoDesc, setAddVideoDesc] = useState("");
 
+  // YouTube live search state
+  const [youtubeResults, setYoutubeResults] = useState([]);
+  const [youtubeLoading, setYoutubeLoading] = useState(false);
+  const [youtubeError, setYoutubeError] = useState(null);
+
+  // Debounced YouTube search – fires 600 ms after the user stops typing (min 2 chars)
+  useEffect(() => {
+    if (view !== "videos" || activeVideo) return;
+    const q = videoSearch.trim();
+    if (q.length < 2) { setYoutubeResults([]); setYoutubeError(null); return; }
+    const timer = setTimeout(async () => {
+      const apiKey = import.meta.env.VITE_YOUTUBE_API_KEY;
+      if (!apiKey || apiKey === "YOUR_YOUTUBE_DATA_API_KEY_HERE") {
+        setYoutubeResults([]);
+        return;
+      }
+      setYoutubeLoading(true);
+      setYoutubeError(null);
+      try {
+        const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(q + " automotive car repair")}&type=video&maxResults=8&key=${apiKey}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`YouTube API error ${res.status}`);
+        const data = await res.json();
+        const items = (data.items || []).map(item => ({
+          id: "yt-" + item.id.videoId,
+          youtubeId: item.id.videoId,
+          title: item.snippet.title,
+          channel: item.snippet.channelTitle,
+          channelId: item.snippet.channelId,
+          thumb: item.snippet.thumbnails.high?.url || `https://img.youtube.com/vi/${item.id.videoId}/hqdefault.jpg`,
+          desc: item.snippet.description,
+          category: "YouTube",
+          level: "Any Level",
+          duration: "–",
+          views: 0,
+          likes: 0,
+          tags: [],
+          fromYouTubeSearch: true,
+        }));
+        setYoutubeResults(items);
+      } catch (err) {
+        setYoutubeError("Couldn't load YouTube results. Check your API key.");
+        setYoutubeResults([]);
+      } finally {
+        setYoutubeLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [videoSearch, view, activeVideo]);
+
   // Tick down auction timers every second
   const [tick, setTick] = useState(0);
   useEffect(() => {
@@ -1499,6 +1549,37 @@ export default function App() {
                   <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} />
                 ))}
             </section>
+
+            {/* ── YouTube live search results ── */}
+            {videoSearch.trim().length >= 2 && (
+              <section style={{ padding: "0 16px 32px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                  <span style={{ background: "#FF0000", color: "#fff", fontWeight: 800, fontSize: 13, padding: "3px 10px", borderRadius: 6, letterSpacing: 0.5 }}>▶ YouTube</span>
+                  <span style={{ color: C.text, fontWeight: 700, fontSize: 15 }}>Live results for "{videoSearch.trim()}"</span>
+                  {youtubeLoading && <span style={{ color: C.muted, fontSize: 12 }}>Searching…</span>}
+                </div>
+
+                {youtubeError && (
+                  <div style={{ color: "#FF6B6B", fontSize: 13, padding: "10px 0" }}>{youtubeError}</div>
+                )}
+
+                {!youtubeLoading && !youtubeError && youtubeResults.length === 0 && (
+                  <div style={{ color: C.muted, fontSize: 13 }}>
+                    {import.meta.env.VITE_YOUTUBE_API_KEY && import.meta.env.VITE_YOUTUBE_API_KEY !== "YOUR_YOUTUBE_DATA_API_KEY_HERE"
+                      ? "No YouTube results found."
+                      : "Add your YouTube Data API key to .env (VITE_YOUTUBE_API_KEY) to enable live YouTube search."}
+                  </div>
+                )}
+
+                {youtubeResults.length > 0 && (
+                  <div style={styles.videoGrid}>
+                    {youtubeResults.map(v => (
+                      <VideoCard key={v.id} video={v} onClick={() => setActiveVideo(v)} />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
           </>
         )}
 
