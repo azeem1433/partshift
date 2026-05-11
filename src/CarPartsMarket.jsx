@@ -72,18 +72,18 @@ const initialReviews = [
 
 // === VIDEOS === (repair tutorials, how-tos, DIY guides)
 const initialVideos = [
-  { id: 301, title: "How to Replace Brake Pads & Rotors", category: "Brakes", level: "Beginner", duration: "12:48", views: 142000, likes: 3800, channel: "GarageProTools", channelId: "u3", thumb: "https://images.unsplash.com/photo-1635073908681-b4dfb7f0aaa6?w=600&q=80", desc: "Complete walkthrough including tools needed, torque specs, and the bedding-in procedure. Works for most cars.", tags: ["brakes", "diy", "maintenance"] },
-  { id: 302, title: "Coilover Install on a 2018 WRX STI", category: "Suspension", level: "Intermediate", duration: "23:15", views: 89000, likes: 2400, channel: "ChassisTech", channelId: "u5", thumb: "https://images.unsplash.com/photo-1568844293986-8d0400bd4745?w=600&q=80", desc: "Step-by-step KW V3 coilover installation including corner-balancing tips.", tags: ["suspension", "subaru", "install"] },
-  { id: 303, title: "Diagnosing Misfires with an OBD2 Scanner", category: "Diagnostics", level: "Beginner", duration: "8:22", views: 256000, likes: 6100, channel: "GarageProTools", channelId: "u3", thumb: "https://images.unsplash.com/photo-1632823471565-1ecdf5c6da77?w=600&q=80", desc: "Read codes, identify the cylinder, and narrow down causes (coil pack, plug, injector).", tags: ["obd2", "diagnostics", "misfire"] },
-  { id: 304, title: "Turbo Install: Garrett GTX3582R", category: "Engine", level: "Advanced", duration: "47:30", views: 64000, likes: 1900, channel: "TurboNation", channelId: "u4", thumb: "https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80", desc: "Full bolt-on turbo install. Oil and coolant lines, downpipe routing, tuning preparation.", tags: ["turbo", "engine", "advanced"] },
-  { id: 305, title: "Cat-Back Exhaust Install in 30 Minutes", category: "Exhaust", level: "Beginner", duration: "11:05", views: 178000, likes: 4500, channel: "SpeedKraft", channelId: "u2", thumb: "https://images.unsplash.com/photo-1605152276897-4f618f831968?w=600&q=80", desc: "Easy weekend modification. Just hand tools required. Sound clip at the end.", tags: ["exhaust", "diy", "easy"] },
-  { id: 306, title: "Cold Air Intake: Worth It or Marketing Hype?", category: "Engine", level: "Beginner", duration: "9:40", views: 312000, likes: 8200, channel: "SpeedKraft", channelId: "u2", thumb: "https://images.unsplash.com/photo-1486496572940-2bb2341fdbdf?w=600&q=80", desc: "Real dyno numbers, sound test, and an honest verdict on intake modifications.", tags: ["intake", "review", "dyno"] },
-  { id: 307, title: "Changing Your Own Oil — Full Walkthrough", category: "Maintenance", level: "Beginner", duration: "7:18", views: 524000, likes: 12000, channel: "GarageProTools", channelId: "u3", thumb: "https://images.unsplash.com/photo-1486754735734-325b5831c3ad?w=600&q=80", desc: "Save fifty dollars at every oil change. Covers tools, oil selection, and proper disposal.", tags: ["maintenance", "oil", "basics"] },
-  { id: 308, title: "EV Battery Replacement: What You Need to Know", category: "Maintenance", level: "Advanced", duration: "18:55", views: 41000, likes: 1100, channel: "EVNation", channelId: "u6", thumb: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=600&q=80", desc: "Cost, available options, refurbished versus new, and key safety considerations.", tags: ["ev", "battery", "tesla"] },
-  { id: 309, title: "Flushing Brake Fluid (DOT 3/4) the Right Way", category: "Brakes", level: "Intermediate", duration: "14:22", views: 98000, likes: 2700, channel: "GarageProTools", channelId: "u3", thumb: "https://images.unsplash.com/photo-1599256630537-90681cf6f9b1?w=600&q=80", desc: "Two-person bleed and one-person vacuum methods. Avoid the dreaded spongy pedal.", tags: ["brakes", "fluid", "maintenance"] },
-  { id: 310, title: "Wheel Bearing Replacement (Front Hub)", category: "Suspension", level: "Intermediate", duration: "26:40", views: 73000, likes: 1800, channel: "ChassisTech", channelId: "u5", thumb: "https://images.unsplash.com/photo-1611821064430-0d40291d0f0b?w=600&q=80", desc: "Diagnosing the bad bearing, press-out tools, and proper torque specs.", tags: ["bearing", "suspension", "diy"] },
-  { id: 311, title: "Reading a Wiring Diagram: Beginner's Guide", category: "Diagnostics", level: "Beginner", duration: "15:10", views: 187000, likes: 4900, channel: "GarageProTools", channelId: "u3", thumb: "https://images.unsplash.com/photo-1617886322207-6f504e7472c5?w=600&q=80", desc: "Decode any factory service manual diagram. Symbols, color codes, signal flow.", tags: ["wiring", "electrical", "basics"] },
-  { id: 312, title: "Restoration: Bringing a '69 Camaro Back to Life", category: "Restoration", level: "Advanced", duration: "1:02:34", views: 218000, likes: 7400, channel: "SpeedKraft", channelId: "u2", thumb: "https://images.unsplash.com/photo-1567818735868-e71b99932e29?w=600&q=80", desc: "Multi-month restoration documentary covering bodywork, paint, and full drivetrain rebuild.", tags: ["classic", "restoration", "vintage"] },
+  { id: 301, title: "How to Replace Brake Pads & Rotors", category: "Brakes", level: "Beginner", duration: "12:48", views: 142000, likes: 3800, channel: "GarageProTools", channelId: "u3", youtubeId: "eHBB5EFIOh0", thumb: "https://images.unsplash.com/photo-1635073908681-b4dfb7f0aaa6?w=600&q=80", desc: "Complete walkthrough including tools needed, torque specs, and the bedding-in procedure. Works for most cars.", tags: ["brakes", "diy", "maintenance"] },
+  { id: 302, title: "Coilover Install on a 2018 WRX STI", category: "Suspension", level: "Intermediate", duration: "23:15", views: 89000, likes: 2400, channel: "ChassisTech", channelId: "u5", youtubeId: "0Ck4MZFiAd4", thumb: "https://images.unsplash.com/photo-1568844293986-8d0400bd4745?w=600&q=80", desc: "Step-by-step KW V3 coilover installation including corner-balancing tips.", tags: ["suspension", "subaru", "install"] },
+  { id: 303, title: "Diagnosing Misfires with an OBD2 Scanner", category: "Diagnostics", level: "Beginner", duration: "8:22", views: 256000, likes: 6100, channel: "GarageProTools", channelId: "u3", youtubeId: "GdfEEMonOhQ", thumb: "https://images.unsplash.com/photo-1632823471565-1ecdf5c6da77?w=600&q=80", desc: "Read codes, identify the cylinder, and narrow down causes (coil pack, plug, injector).", tags: ["obd2", "diagnostics", "misfire"] },
+  { id: 304, title: "Turbo Install: Garrett GTX3582R", category: "Engine", level: "Advanced", duration: "47:30", views: 64000, likes: 1900, channel: "TurboNation", channelId: "u4", youtubeId: "23WNKG_RCKI", thumb: "https://images.unsplash.com/photo-1486006920555-c77dcf18193c?w=600&q=80", desc: "Full bolt-on turbo install. Oil and coolant lines, downpipe routing, tuning preparation.", tags: ["turbo", "engine", "advanced"] },
+  { id: 305, title: "Cat-Back Exhaust Install in 30 Minutes", category: "Exhaust", level: "Beginner", duration: "11:05", views: 178000, likes: 4500, channel: "SpeedKraft", channelId: "u2", youtubeId: "Q7s4TqWvABQ", thumb: "https://images.unsplash.com/photo-1605152276897-4f618f831968?w=600&q=80", desc: "Easy weekend modification. Just hand tools required. Sound clip at the end.", tags: ["exhaust", "diy", "easy"] },
+  { id: 306, title: "Cold Air Intake: Worth It or Marketing Hype?", category: "Engine", level: "Beginner", duration: "9:40", views: 312000, likes: 8200, channel: "SpeedKraft", channelId: "u2", youtubeId: "3GBXbEPkSCA", thumb: "https://images.unsplash.com/photo-1486496572940-2bb2341fdbdf?w=600&q=80", desc: "Real dyno numbers, sound test, and an honest verdict on intake modifications.", tags: ["intake", "review", "dyno"] },
+  { id: 307, title: "Changing Your Own Oil — Full Walkthrough", category: "Maintenance", level: "Beginner", duration: "7:18", views: 524000, likes: 12000, channel: "GarageProTools", channelId: "u3", youtubeId: "0pesKQTOUbA", thumb: "https://images.unsplash.com/photo-1486754735734-325b5831c3ad?w=600&q=80", desc: "Save fifty dollars at every oil change. Covers tools, oil selection, and proper disposal.", tags: ["maintenance", "oil", "basics"] },
+  { id: 308, title: "EV Battery Replacement: What You Need to Know", category: "Maintenance", level: "Advanced", duration: "18:55", views: 41000, likes: 1100, channel: "EVNation", channelId: "u6", youtubeId: "O4ogCMWDYqk", thumb: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?w=600&q=80", desc: "Cost, available options, refurbished versus new, and key safety considerations.", tags: ["ev", "battery", "tesla"] },
+  { id: 309, title: "Flushing Brake Fluid (DOT 3/4) the Right Way", category: "Brakes", level: "Intermediate", duration: "14:22", views: 98000, likes: 2700, channel: "GarageProTools", channelId: "u3", youtubeId: "VCrFuCe33i0", thumb: "https://images.unsplash.com/photo-1599256630537-90681cf6f9b1?w=600&q=80", desc: "Two-person bleed and one-person vacuum methods. Avoid the dreaded spongy pedal.", tags: ["brakes", "fluid", "maintenance"] },
+  { id: 310, title: "Wheel Bearing Replacement (Front Hub)", category: "Suspension", level: "Intermediate", duration: "26:40", views: 73000, likes: 1800, channel: "ChassisTech", channelId: "u5", youtubeId: "oqWpSFxIpFY", thumb: "https://images.unsplash.com/photo-1611821064430-0d40291d0f0b?w=600&q=80", desc: "Diagnosing the bad bearing, press-out tools, and proper torque specs.", tags: ["bearing", "suspension", "diy"] },
+  { id: 311, title: "Reading a Wiring Diagram: Beginner's Guide", category: "Diagnostics", level: "Beginner", duration: "15:10", views: 187000, likes: 4900, channel: "GarageProTools", channelId: "u3", youtubeId: "CtvTSgdVMp8", thumb: "https://images.unsplash.com/photo-1617886322207-6f504e7472c5?w=600&q=80", desc: "Decode any factory service manual diagram. Symbols, color codes, signal flow.", tags: ["wiring", "electrical", "basics"] },
+  { id: 312, title: "Restoration: Bringing a '69 Camaro Back to Life", category: "Restoration", level: "Advanced", duration: "1:02:34", views: 218000, likes: 7400, channel: "SpeedKraft", channelId: "u2", youtubeId: "6ofNIRFMCBs", thumb: "https://images.unsplash.com/photo-1567818735868-e71b99932e29?w=600&q=80", desc: "Multi-month restoration documentary covering bodywork, paint, and full drivetrain rebuild.", tags: ["classic", "restoration", "vintage"] },
 ];
 
 const videoCategories = ["All", "Brakes", "Suspension", "Engine", "Exhaust", "Diagnostics", "Maintenance", "Restoration"];
@@ -323,6 +323,12 @@ export default function App() {
   const [videoComments, setVideoComments] = useState({});
   const [commentDraft, setCommentDraft] = useState("");
   const [likedVideos, setLikedVideos] = useState([]);
+  const [showAddVideo, setShowAddVideo] = useState(false);
+  const [addVideoUrl, setAddVideoUrl] = useState("");
+  const [addVideoTitle, setAddVideoTitle] = useState("");
+  const [addVideoCat, setAddVideoCat] = useState("Maintenance");
+  const [addVideoLevel, setAddVideoLevel] = useState("Beginner");
+  const [addVideoDesc, setAddVideoDesc] = useState("");
 
   // Tick down auction timers every second
   const [tick, setTick] = useState(0);
@@ -1415,7 +1421,52 @@ export default function App() {
               <div style={styles.auctionBadge}>REPAIR LIBRARY</div>
               <h1 style={styles.carsTitle}>Tutorials and how-to guides.</h1>
               <p style={styles.heroSub}>Step-by-step repair videos from verified mechanics and shop owners. Save money on labor and learn to wrench with confidence.</p>
+              {user && (
+                <button onClick={() => setShowAddVideo(true)} style={{ ...styles.ctaBtn, marginTop: 16, fontSize: 14, padding: "10px 20px" }}>
+                  ＋ Add YouTube Video
+                </button>
+              )}
             </section>
+
+            {/* Add YouTube Video Modal */}
+            {showAddVideo && (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+                <div style={{ background: C.card, borderRadius: 16, padding: 28, width: "100%", maxWidth: 480, boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+                    <h2 style={{ margin: 0, color: C.text, fontSize: 20 }}>🎬 Add YouTube Video</h2>
+                    <button onClick={() => { setShowAddVideo(false); setAddVideoUrl(""); setAddVideoTitle(""); setAddVideoDesc(""); }} style={{ background: "none", border: "none", color: C.muted, fontSize: 22, cursor: "pointer" }}>✕</button>
+                  </div>
+                  <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>Paste any YouTube link and it will play directly inside PartShift.</p>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    <input style={styles.formInput} placeholder="YouTube URL (e.g. https://youtube.com/watch?v=...)" value={addVideoUrl} onChange={e => setAddVideoUrl(e.target.value)} />
+                    <input style={styles.formInput} placeholder="Video title" value={addVideoTitle} onChange={e => setAddVideoTitle(e.target.value)} />
+                    <textarea style={{ ...styles.formInput, minHeight: 80, resize: "vertical" }} placeholder="Short description (optional)" value={addVideoDesc} onChange={e => setAddVideoDesc(e.target.value)} />
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <select style={{ ...styles.formInput, flex: 1 }} value={addVideoCat} onChange={e => setAddVideoCat(e.target.value)}>
+                        {["Brakes","Suspension","Engine","Exhaust","Diagnostics","Maintenance","Restoration"].map(c => <option key={c}>{c}</option>)}
+                      </select>
+                      <select style={{ ...styles.formInput, flex: 1 }} value={addVideoLevel} onChange={e => setAddVideoLevel(e.target.value)}>
+                        {["Beginner","Intermediate","Advanced"].map(l => <option key={l}>{l}</option>)}
+                      </select>
+                    </div>
+                    <button style={styles.ctaBtn} onClick={() => {
+                      const match = addVideoUrl.match(/(?:v=|youtu\.be\/|embed\/)([A-Za-z0-9_-]{11})/);
+                      if (!match) { alert("Couldn't find a YouTube video ID in that URL. Please use a standard youtube.com or youtu.be link."); return; }
+                      if (!addVideoTitle.trim()) { alert("Please enter a title for the video."); return; }
+                      const newVideo = {
+                        id: Date.now(), title: addVideoTitle.trim(), category: addVideoCat, level: addVideoLevel,
+                        duration: "–", views: 0, likes: 0, channel: user.name, channelId: user.id,
+                        youtubeId: match[1], thumb: `https://img.youtube.com/vi/${match[1]}/hqdefault.jpg`,
+                        desc: addVideoDesc.trim() || "Community tutorial added by " + user.name,
+                        tags: [addVideoCat.toLowerCase(), addVideoLevel.toLowerCase()]
+                      };
+                      setVideos(prev => [newVideo, ...prev]);
+                      setShowAddVideo(false); setAddVideoUrl(""); setAddVideoTitle(""); setAddVideoDesc("");
+                    }}>Add Video</button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <section style={styles.filterBar}>
               <div style={styles.searchWrap}>
@@ -2835,11 +2886,16 @@ function CarSellForm({ form, setForm, onSubmit }) {
 
 function VideoCard({ video, onClick }) {
   const levelColor = video.level === "Beginner" ? C.green : video.level === "Intermediate" ? C.accent : C.red;
-  const isUrl = typeof video.thumb === "string" && video.thumb.startsWith("http");
+  // Use YouTube thumbnail if available, otherwise fall back to the stored thumb URL
+  const thumbSrc = video.youtubeId
+    ? `https://img.youtube.com/vi/${video.youtubeId}/hqdefault.jpg`
+    : video.thumb;
+  const isUrl = typeof thumbSrc === "string" && thumbSrc.startsWith("http");
   return (
     <div style={styles.videoCard} onClick={onClick}>
       <div style={styles.videoThumb}>
-        {isUrl ? <img src={video.thumb} alt={video.title} style={styles.imgFill} /> : <span style={styles.videoThumbIcon}>{video.thumb}</span>}
+        {isUrl ? <img src={thumbSrc} alt={video.title} style={styles.imgFill} /> : <span style={styles.videoThumbIcon}>{video.thumb}</span>}
+        {video.youtubeId && <span style={{ position: "absolute", top: 8, right: 8, background: "#FF0000", color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4 }}>▶ YouTube</span>}
         <span style={styles.playOverlay}>▶</span>
         <span style={styles.videoDuration}>{video.duration}</span>
         <span style={{ ...styles.videoLevel, background: levelColor, color: "#fff" }}>{video.level}</span>
@@ -2868,17 +2924,28 @@ function VideoPlayer({ video, videos, channel, onBack, onSelectVideo, onProfile,
       <div style={styles.videoPlayerLayout}>
         <div style={styles.videoMain}>
           <div style={styles.videoPlayer}>
-            <div style={styles.videoPlayerInner}>
-              {isUrl ? <img src={video.thumb} alt={video.title} style={{ ...styles.imgFill, opacity: 0.55 }} /> : <span style={styles.videoPlayerIcon}>{video.thumb}</span>}
-              <div style={styles.playButton}>▶</div>
-              <div style={styles.videoControls}>
-                <span style={styles.controlBtn}>▶</span>
-                <div style={styles.progressBar}><div style={styles.progressFilled} /></div>
-                <span style={styles.controlTime}>0:00 / {video.duration}</span>
-                <span style={styles.controlBtn}>⚙</span>
-                <span style={styles.controlBtn}>⛶</span>
+            {video.youtubeId ? (
+              <iframe
+                key={video.youtubeId}
+                src={`https://www.youtube.com/embed/${video.youtubeId}?autoplay=1&rel=0&modestbranding=1`}
+                title={video.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                allowFullScreen
+                style={{ width: "100%", height: "100%", border: "none", borderRadius: 12 }}
+              />
+            ) : (
+              <div style={styles.videoPlayerInner}>
+                {isUrl ? <img src={video.thumb} alt={video.title} style={{ ...styles.imgFill, opacity: 0.55 }} /> : <span style={styles.videoPlayerIcon}>{video.thumb}</span>}
+                <div style={styles.playButton}>▶</div>
+                <div style={styles.videoControls}>
+                  <span style={styles.controlBtn}>▶</span>
+                  <div style={styles.progressBar}><div style={styles.progressFilled} /></div>
+                  <span style={styles.controlTime}>0:00 / {video.duration}</span>
+                  <span style={styles.controlBtn}>⚙</span>
+                  <span style={styles.controlBtn}>⛶</span>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <h1 style={styles.videoBigTitle}>{video.title}</h1>

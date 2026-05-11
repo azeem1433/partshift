@@ -9,7 +9,26 @@
       "mcp__Claude_in_Chrome__navigate",
       "mcp__Claude_in_Chrome__computer",
       "Bash(npm install *)",
-      "Bash(npx cap *)"
+      "Bash(npx cap *)",
+      "Bash(taskkill /F /IM studio64.exe)",
+      "Bash(Start-Sleep 2)",
+      "Bash(Start-Process \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\bin\\\\studio64.exe\" -ArgumentList \"C:\\\\Users\\\\Home\\\\partshift\\\\.claude\\\\worktrees\\\\amazing-elgamal-3cbf9e\\\\android\")",
+      "PowerShell(taskkill /F /IM studio64.exe 2>&1)",
+      "PowerShell(Start-Process \"C:\\\\Program Files\\\\Android\\\\Android Studio\\\\bin\\\\studio64.exe\" -ArgumentList \"C:\\\\Users\\\\Home\\\\partshift\\\\.claude\\\\worktrees\\\\amazing-elgamal-3cbf9e\\\\android\")",
+      "Bash(powershell -command \"Set-Clipboard -Value 'C:\\\\Users\\\\Home\\\\partshift\\\\.claude\\\\worktrees\\\\amazing-elgamal-3cbf9e\\\\android'\")",
+      "Bash(powershell -command \"Get-WindowsOptionalFeature -Online -FeatureName HypervisorPlatform | Select-Object State; Get-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-All | Select-Object State\")",
+      "Bash(powershell -command \"bcdedit /enum | findstr -i hypervislaunchtype\")",
+      "Bash(powershell -command \"systeminfo | findstr /C:'Hyper-V'\")",
+      "Bash(ls \"C:\\\\Users\\\\Home\\\\.android\\\\avd\\\\\" 2>/dev/null || echo \"No AVD directory\")",
+      "Bash(ls /c/Users/Home/.android/avd/)",
+      "Bash(ls /c/Users/Home/.android/avd/Pixel_8.avd/data/ 2>/dev/null | head -5; echo \"---\"; ls /c/Users/Home/AppData/Local/Android/Sdk/emulator/ | head -20)",
+      "Bash(tasklist /fi \"imagename eq qemu-system-x86_64.exe\")",
+      "Bash(tasklist /fi \"imagename eq emulator.exe\")",
+      "PowerShell(Get-Process | Select-Object Name | Sort-Object Name | Where-Object { $_.Name -match \"java|studio|emul|qemu|pixel|avd\" })",
+      "PowerShell($adb = \"C:\\\\Users\\\\Home\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\"; $timeout = 300; $start = Get-Date; while \\(\\(Get-Date\\) - $start -lt [TimeSpan]::FromSeconds\\($timeout\\)\\) { $result = & $adb devices; if \\($result -match \"emulator\"\\) { Write-Host \"EMULATOR ONLINE: $result\"; break }; Start-Sleep -Seconds 5; Write-Host \"Waiting... $\\([int]\\(\\(Get-Date\\) - $start\\).TotalSeconds\\)s\" }; Write-Host \"Done\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Home\\\\partshift\\\\.claude\\\\worktrees\\\\amazing-elgamal-3cbf9e\\\\src\" -Recurse -Filter \"*.jsx\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(git commit -m 'Add real YouTube video playback and Add Video feature *)"
     ]
   }
 }
