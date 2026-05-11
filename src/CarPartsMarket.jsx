@@ -2,6 +2,9 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { api, supabase } from "./lib/supabase";
 import PhotoUploader from "./components/PhotoUploader";
 
+// Always use the web URL for links shared from inside the mobile app
+const APP_BASE_URL = "https://partshift.vercel.app";
+
 /* ============== REGIONS ============== */
 const REGIONS = {
   "Northeast": ["CT", "ME", "MA", "NH", "NJ", "NY", "PA", "RI", "VT"],
@@ -1285,12 +1288,12 @@ export default function App() {
                     <>
                       <div style={{ background: "rgba(255,255,255,0.1)", borderRadius: 8, padding: "8px 14px", fontFamily: "monospace", fontWeight: 700, fontSize: 14, letterSpacing: 2, color: C.accent }}>{referralStats.code}</div>
                       <button
-                        onClick={() => navigator.clipboard.writeText(`${window.location.origin}${window.location.pathname}?ref=${referralStats.code}`).then(() => alert("Referral link copied!"))}
+                        onClick={() => navigator.clipboard.writeText(`${APP_BASE_URL}?ref=${referralStats.code}`).then(() => alert("Referral link copied!"))}
                         style={{ background: C.accent, color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}>
                         Copy Link
                       </button>
                       <button
-                        onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Buy, sell & bid on car parts with verified enthusiasts on PartShift! Join with my link: " + window.location.origin + window.location.pathname + "?ref=" + referralStats.code)}`, "_blank")}
+                        onClick={() => window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent("Buy, sell & bid on car parts with verified enthusiasts on PartShift! Join with my link: " + APP_BASE_URL + "?ref=" + referralStats.code)}`, "_blank")}
                         style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "9px 16px", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
                         𝕏 Share
                       </button>
@@ -1660,7 +1663,7 @@ export default function App() {
           const isMe = user && u.id === user.id;
 
           const referralLink = referralStats?.code
-            ? `${window.location.origin}${window.location.pathname}?ref=${referralStats.code}`
+            ? `${APP_BASE_URL}?ref=${referralStats.code}`
             : null;
 
           const copyReferralLink = () => {
@@ -2219,7 +2222,7 @@ function FilterBar({ search, setSearch, chips, active, setActive, sortBy, setSor
 
 function shareItem(e, id, type, title) {
   e.stopPropagation();
-  const url = `${window.location.origin}${window.location.pathname}?item=${id}&type=${type}`;
+  const url = `${APP_BASE_URL}?item=${id}&type=${type}`;
   if (navigator.share) { navigator.share({ title: `PartShift — ${title}`, url }); }
   else { navigator.clipboard.writeText(url).then(() => alert("Link copied to clipboard!")); }
 }

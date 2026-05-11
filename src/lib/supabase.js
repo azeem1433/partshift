@@ -245,7 +245,7 @@ export const api = {
   },
 
   async sendWelcomeEmail({ email, name, referralCode }) {
-    const referralLink = `${window.location.origin}${window.location.pathname}?ref=${referralCode}`;
+    const referralLink = `https://partshift.vercel.app?ref=${referralCode}`;
     return await supabase.functions.invoke("welcome-email", {
       body: { email, name, referralCode, referralLink },
     });
