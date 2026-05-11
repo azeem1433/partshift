@@ -244,6 +244,13 @@ export const api = {
     return { error };
   },
 
+  async sendWelcomeEmail({ email, name, referralCode }) {
+    const referralLink = `${window.location.origin}${window.location.pathname}?ref=${referralCode}`;
+    return await supabase.functions.invoke("welcome-email", {
+      body: { email, name, referralCode, referralLink },
+    });
+  },
+
   async completeReferralOnPurchase() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;

@@ -205,6 +205,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "", referralCode: "" });
   const [referralStats, setReferralStats] = useState(null);
+  const [pendingDeepLink, setPendingDeepLink] = useState(null);
 
   const [parts, setParts] = useState([]);
   const [cars, setCars] = useState([]);
@@ -281,11 +282,29 @@ export default function App() {
       setAuthMode("signup");
     }
 
+    // Detect shared listing deep-link (?item=ID&type=TYPE)
+    const itemId = params.get("item");
+    const itemType = params.get("type");
+    if (itemId && itemType) {
+      setPendingDeepLink({ id: itemId, type: itemType });
+    }
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
   }, []);
+
+  // Resolve shared listing deep-link once data has loaded
+  useEffect(() => {
+    if (!pendingDeepLink || loading) return;
+    const { id, type } = pendingDeepLink;
+    let item = null;
+    if (type === "part") item = parts.find(p => String(p.id) === String(id));
+    else if (type === "car") item = cars.find(c => String(c.id) === String(id));
+    else if (type === "auction") item = auctions.find(a => String(a.id) === String(id));
+    if (item) { setSelected(item); setView("detail"); setPendingDeepLink(null); }
+  }, [pendingDeepLink, loading, parts, cars, auctions]);
 
   // Load referral stats whenever the user logs in
   useEffect(() => {
@@ -851,8 +870,11 @@ export default function App() {
       if (authForm.referralCode.trim()) {
         await api.applyReferralCode(authForm.referralCode);
       }
-      // Auto-generate a referral code for the new user
-      await api.generateReferralCode();
+      // Auto-generate a referral code for the new user, then send welcome email
+      const { data: newCode } = await api.generateReferralCode();
+      if (newCode) {
+        api.sendWelcomeEmail({ email: authForm.email, name: authForm.name, referralCode: newCode });
+      }
     } else {
       if (!authForm.email || !authForm.password) {
         alert("Enter email and password.");
@@ -2195,6 +2217,13 @@ function FilterBar({ search, setSearch, chips, active, setActive, sortBy, setSor
   );
 }
 
+function shareItem(e, id, type, title) {
+  e.stopPropagation();
+  const url = `${window.location.origin}${window.location.pathname}?item=${id}&type=${type}`;
+  if (navigator.share) { navigator.share({ title: `PartShift — ${title}`, url }); }
+  else { navigator.clipboard.writeText(url).then(() => alert("Link copied to clipboard!")); }
+}
+
 function PartCard({ item, seller, saved, onClick, onSave, distance }) {
   const isNewItem = isNew(item.condition);
   const isUrl = typeof item.image === "string" && item.image.startsWith("http");
@@ -2217,7 +2246,10 @@ function PartCard({ item, seller, saved, onClick, onSave, distance }) {
           <span style={styles.cardSeller}>{seller.avatar} {seller.name}</span>
           <span style={styles.cardRating}>★ {seller.rating}</span>
         </div>
-        <div style={styles.cardLoc}>📍 {item.city}, {item.state}{distance != null && ` · ~${Math.round(distance)} mi`}</div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={styles.cardLoc}>📍 {item.city}, {item.state}{distance != null && ` · ~${Math.round(distance)} mi`}</div>
+          <button onClick={e => shareItem(e, item.id, "part", item.title)} style={styles.shareBtn} title="Share this listing">↗ Share</button>
+        </div>
       </div>
     </div>
   );
@@ -2245,6 +2277,7 @@ function CarCard({ car, seller, saved, onClick, onSave, distance }) {
           <span style={styles.cardSeller}>{seller.avatar} {seller.name}</span>
           <span style={styles.cardSeller}>📍 {car.city}, {car.state}{distance != null && ` · ~${Math.round(distance)} mi`}</span>
         </div>
+        <button onClick={e => shareItem(e, car.id, "car", `${car.year} ${car.make} ${car.model}`)} style={{ ...styles.shareBtn, marginTop: 8 }} title="Share this listing">↗ Share</button>
       </div>
     </div>
   );
@@ -2285,6 +2318,7 @@ function AuctionCard({ auction, seller, saved, onClick, onSave }) {
           <span style={styles.cardSeller}>{seller.avatar} {seller.name}</span>
           <span style={styles.cardSeller}>📍 {auction.city}, {auction.state}</span>
         </div>
+        <button onClick={e => shareItem(e, auction.id, "auction", auction.title)} style={{ ...styles.shareBtn, marginTop: 8 }} title="Share this auction">↗ Share</button>
       </div>
     </div>
   );
@@ -3014,6 +3048,7 @@ const styles = {
   cardSeller: { fontSize: 12, color: C.muted },
   cardRating: { fontSize: 12, color: "#ffd700" },
   cardLoc: { fontSize: 11, color: C.muted },
+  shareBtn: { background: "none", border: `1px solid ${C.border}`, color: C.muted, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 6, cursor: "pointer", fontFamily: "inherit", letterSpacing: 0.5 },
   carGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 22, paddingBottom: 64 },
   carCard: { background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, overflow: "hidden", cursor: "pointer", transition: "transform .2s, box-shadow .2s", position: "relative", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
   carImg: { height: 200, background: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 100, position: "relative" },
