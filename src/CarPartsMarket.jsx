@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { api, supabase } from "./lib/supabase";
 import PhotoUploader from "./components/PhotoUploader";
 
@@ -203,7 +203,30 @@ const normalizeAuction = (row) => {
 
 /* ============== APP ============== */
 export default function App() {
-  const [view, setView] = useState("browse");
+  const [view, _setView] = useState("browse");
+  // Keep a ref so the stable setView callback always sees the current view
+  const _viewRef = useRef("browse");
+  const _viewHistory = useRef([]);
+
+  // Stable setter — pushes a browser-history entry so the back button works
+  const setView = useCallback((v) => {
+    if (v === _viewRef.current) return; // ignore no-op navigations
+    _viewHistory.current.push(_viewRef.current);
+    _viewRef.current = v;
+    history.pushState({ psView: v }, "");
+    _setView(v);
+  }, []);
+
+  // Browser back/forward ← handles both the ← button and swipe gestures
+  useEffect(() => {
+    const onPop = () => {
+      const prev = _viewHistory.current.pop() ?? "browse";
+      _viewRef.current = prev;
+      _setView(prev);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const [user, setUser] = useState(null);
   const [authMode, setAuthMode] = useState("login");
   const [authForm, setAuthForm] = useState({ name: "", email: "", password: "", zip: "", referralCode: "" });
